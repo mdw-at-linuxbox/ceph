@@ -1135,9 +1135,23 @@ endif(${WITH_KVS})
 
 if(${WITH_RADOSGW})
 
+
   if(${HAVE_OPENLDAP})
     set(rgw_ldap_srcs rgw/rgw_ldap.cc)
   endif(${HAVE_OPENLDAP})
+
+  set(civetweb_common_files civetweb/src/civetweb.c)
+  add_library(civetweb_common_objs OBJECT ${civetweb_common_files})
+# was PUBLIC - why?
+  target_include_directories(civetweb_common_objs PRIVATE
+	"${CMAKE_BINARY_DIR}/src/include/civetweb")
+  if(HAVE_OPENSSL)
+  set_property(TARGET civetweb_common_objs
+	       APPEND PROPERTY COMPILE_DEFINITIONS NO_SSL_DL=1 USE_IPV6=1)
+#  target_include_directories(civetweb_common_objs PUBLIC
+#	"${OPENSSL_INCLUDE_DIR}")
+  else(HAVE_OPENSSL)
+  endif(HAVE_OPENSSL)
 
   set(rgw_a_srcs
     rgw/rgw_acl.cc
@@ -1185,8 +1199,8 @@ if(${WITH_RADOSGW})
     rgw/rgw_replica_log.cc
     rgw/rgw_request.cc
     rgw/rgw_resolve.cc
-    rgw/rgw_rest_bucket.cc
     rgw/rgw_rest.cc
+    rgw/rgw_rest_bucket.cc
     rgw/rgw_rest_client.cc
     rgw/rgw_rest_config.cc
     rgw/rgw_rest_conn.cc
@@ -1195,6 +1209,7 @@ if(${WITH_RADOSGW})
     rgw/rgw_rest_opstate.cc
     rgw/rgw_rest_realm.cc
     rgw/rgw_rest_replica_log.cc
+    rgw/rgw_rest_objstore.cc
     rgw/rgw_rest_s3.cc
     rgw/rgw_rest_swift.cc
     rgw/rgw_rest_usage.cc
@@ -1207,25 +1222,15 @@ if(${WITH_RADOSGW})
     rgw/rgw_website.cc
     rgw/rgw_xml.cc
     rgw/rgw_xml_enc.cc
+    rgw/rgw_civetweb.cc
+    rgw/rgw_civetweb_log.cc
+    $<TARGET_OBJECTS:civetweb_common_objs>
     )
 
   add_library(rgw_a STATIC ${rgw_a_srcs})
   target_link_libraries(rgw_a librados cls_rgw_client cls_refcount_client
     cls_log_client cls_statelog_client cls_timeindex_client cls_version_client
     cls_replica_log_client cls_user_client curl global expat)
-
-  set(civetweb_common_files civetweb/src/civetweb.c)
-  add_library(civetweb_common_objs OBJECT ${civetweb_common_files})
-# was PUBLIC - why?
-  target_include_directories(civetweb_common_objs PRIVATE
-	"${CMAKE_BINARY_DIR}/src/include/civetweb")
-  if(HAVE_OPENSSL)
-  set_property(TARGET civetweb_common_objs
-	       APPEND PROPERTY COMPILE_DEFINITIONS NO_SSL_DL=1 USE_IPV6=1)
-#  target_include_directories(civetweb_common_objs PUBLIC
-#	"${OPENSSL_INCLUDE_DIR}")
-  else(HAVE_OPENSSL)
-  endif(HAVE_OPENSSL)
 
   if(HAVE_BOOST_ASIO_COROUTINE)
     target_compile_definitions(rgw_a PUBLIC "HAVE_BOOST_ASIO_COROUTINE")
@@ -1234,9 +1239,7 @@ if(${WITH_RADOSGW})
   set(radosgw_srcs
     rgw/rgw_fcgi_process.cc
     rgw/rgw_loadgen_process.cc
-    rgw/rgw_civetweb.cc
     rgw/rgw_civetweb_frontend.cc
-    rgw/rgw_civetweb_log.cc
     rgw/rgw_main.cc)
 
   set(radosgw_admin_srcs
@@ -1278,7 +1281,8 @@ if(${WITH_RADOSGW})
     include/rados/rgw_file.h
   DESTINATION include/rados)
 
-  add_executable(radosgw ${radosgw_srcs}  $<TARGET_OBJECTS:civetweb_common_objs>)
+#  add_executable(radosgw ${radosgw_srcs}  $<TARGET_OBJECTS:civetweb_common_objs>)
+  add_executable(radosgw ${radosgw_srcs} $<TARGET_OBJECTS:heap_profiler_objs>)
   target_link_libraries(radosgw rgw_a librados
     cls_rgw_client cls_lock_client cls_refcount_client
     cls_log_client cls_statelog_client cls_timeindex_client
@@ -1332,3 +1336,24 @@ add_custom_target(cephfs_testing DEPENDS
     cephfs-journal-tool
     cephfs-data-scan
     cephfs-table-tool)
+
+if(${WITH_RGW_STS})
+  set(rgw_sts_srcs
+    sts/sts_main.cc
+    sts/rgw_rest_sts.cc
+    sts/rgw_dummy.cc
+)
+
+  add_executable(rgw-sts ${rgw_sts_srcs} $<TARGET_OBJECTS:heap_profiler_objs>)
+  set_property(TARGET rgw-sts
+	       APPEND PROPERTY INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/src/rgw)
+  set_property(TARGET rgw-sts
+		APPEND PROPERTY LINK_FLAGS "-Wl,-z,muldefs")
+# XXX should make need for OPENLDAP_LIBS here go away - probably some
+#  indirect connection via rgw_a
+  target_link_libraries(rgw-sts rgw_a
+    curl expat global fcgi resolv ssl crypto
+ ${OPENLDAP_LIBS}
+    ${BLKID_LIBRARIES} ${CMAKE_DL_LIBS} ${ALLOC_LIBS})
+  install(TARGETS rgw-sts DESTINATION bin)
+endif(${WITH_RGW_STS})

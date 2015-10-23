@@ -181,6 +181,15 @@ using ceph::crypto::MD5;
 #define ERR_INTERNAL_ERROR       2200
 #define ERR_NOT_IMPLEMENTED      2201
 
+// sts
+
+#define ERR_IDP_REJECTED_CLAIM	3001
+#define ERR_UNKNOWN_ERROR	3002
+#define ERR_INVALID_ACTION	3003
+#define ERR_INVALID_TOKEN	3004
+#define ERR_MALFORMED_INPUT	3005
+#define ERR_MISSING_AUTH	3006
+
 #ifndef UINT32_MAX
 #define UINT32_MAX (0xffffffffu)
 #endif
