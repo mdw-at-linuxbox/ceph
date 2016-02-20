@@ -79,7 +79,7 @@ libcommon_internal_la_SOURCES = \
 	common/scrub_types.cc \
 	common/blkdev.cc
 
-common/PluginRegistry.cc: ./ceph_ver.h
+common/PluginRegistry.cc: ceph_ver.h
 
 if ENABLE_SERVER
 libcommon_internal_la_SOURCES += \
