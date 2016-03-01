@@ -301,6 +301,11 @@ configure_file(
   ${PROJECT_BINARY_DIR}/include/acconfig.h
 )
 include_directories(${PROJECT_BINARY_DIR}/include)
+# we want to include civetweb.h as "civetweb/civetweb.h".  Make it so.
+execute_process(
+COMMAND rm -f "${CMAKE_BINARY_DIR}/src/include/civetweb"
+COMMAND ln -s "${CMAKE_SOURCE_DIR}/src/civetweb/include"
+        "${CMAKE_BINARY_DIR}/src/include/civetweb")
 
 add_definitions(-D__linux__)
 
