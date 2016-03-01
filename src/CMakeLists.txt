@@ -1209,22 +1209,23 @@ if(${WITH_RADOSGW})
     rgw/rgw_xml_enc.cc
     )
 
-  set(civetweb_common_files civetweb/src/civetweb.c)
-  add_library(civetweb_common_objs OBJECT ${civetweb_common_files})
-  target_include_directories(civetweb_common_objs PUBLIC
-	"${CMAKE_SOURCE_DIR}/src/civetweb/include")
-  if(HAVE_OPENSSL)
-  set_property(TARGET civetweb_common_objs
-	       APPEND PROPERTY COMPILE_DEFINITIONS NO_SSL_DL=1)
-  target_include_directories(civetweb_common_objs PUBLIC
-	"${OPENSSL_INCLUDE_DIR}")
-  else(HAVE_OPENSSL)
-  endif(HAVE_OPENSSL)
-
   add_library(rgw_a STATIC ${rgw_a_srcs})
   target_link_libraries(rgw_a librados cls_rgw_client cls_refcount_client
     cls_log_client cls_statelog_client cls_timeindex_client cls_version_client
     cls_replica_log_client cls_user_client curl global expat)
+
+  set(civetweb_common_files civetweb/src/civetweb.c)
+  add_library(civetweb_common_objs OBJECT ${civetweb_common_files})
+# was PUBLIC - why?
+  target_include_directories(civetweb_common_objs PRIVATE
+	"${CMAKE_BINARY_DIR}/src/include/civetweb")
+  if(HAVE_OPENSSL)
+  set_property(TARGET civetweb_common_objs
+	       APPEND PROPERTY COMPILE_DEFINITIONS NO_SSL_DL=1 USE_IPV6=1)
+#  target_include_directories(civetweb_common_objs PUBLIC
+#	"${OPENSSL_INCLUDE_DIR}")
+  else(HAVE_OPENSSL)
+  endif(HAVE_OPENSSL)
 
   if(HAVE_BOOST_ASIO_COROUTINE)
     target_compile_definitions(rgw_a PUBLIC "HAVE_BOOST_ASIO_COROUTINE")
