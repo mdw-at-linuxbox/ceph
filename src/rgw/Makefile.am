@@ -21,6 +21,9 @@ DENCODER_DEPS += -lcurl -lexpat \
 if WITH_RADOS
 if WITH_RADOSGW
 
+CIVETWEB_INCLUDE = -I$(builddir)/include
+CIVETWEB_DEFINES = -DNO_SSL_DL -DUSE_IPV6
+
 librgw_la_SOURCES = \
 	rgw/rgw_acl.cc \
 	rgw/rgw_acl_s3.cc \
@@ -96,7 +99,7 @@ librgw_la_SOURCES += rgw/rgw_ldap.cc
 endif
 
 librgw_la_CXXFLAGS = -Woverloaded-virtual -fPIC -I$(srcdir)/xxHash \
-	${AM_CXXFLAGS}
+	${AM_CXXFLAGS} ${CIVETWEB_INCLUDE}
 # noinst_LTLIBRARIES += librgw.la
 
 LIBRGW_DEPS += \
@@ -124,7 +127,10 @@ librgw_la_LDFLAGS = ${AM_LDFLAGS} -version-info 2:0:0
 
 lib_LTLIBRARIES += librgw.la
 
-CIVETWEB_INCLUDE = --include $(srcdir)/civetweb/include/civetweb_conf.h
+BUILT_SOURCES += include/civetweb
+include/civetweb:
+	mkdir -p $(builddir)/include
+	ln -sf "`readlink -f $(srcdir)/civetweb/include`" $(builddir)/include/civetweb
 
 libcivetweb_la_SOURCES =  \
 	rgw/rgw_civetweb.cc \
@@ -133,7 +139,7 @@ libcivetweb_la_SOURCES =  \
 
 libcivetweb_la_CXXFLAGS = ${CIVETWEB_INCLUDE} -fPIC -Woverloaded-virtual \
 	${AM_CXXFLAGS}
-libcivetweb_la_CFLAGS = -I$(srcdir)/civetweb/include ${CIVETWEB_INCLUDE} -fPIC -DNO_SSL_DL
+libcivetweb_la_CFLAGS = ${CIVETWEB_INCLUDE} ${CIVETWEB_DEFINES} -I$(builddir)/include/civetweb -fPIC
 LIBCIVETWEB_DEPS += -lssl -lcrypto
 
 noinst_LTLIBRARIES += libcivetweb.la
@@ -147,9 +153,10 @@ radosgw_SOURCES = \
 	civetweb/src/civetweb.c \
 	rgw/rgw_main.cc
 
-radosgw_CFLAGS = -I$(srcdir)/civetweb/include -fPIC -I$(srcdir)/xxHash
-radosgw_LDADD = $(LIBRGW) $(LIBCIVETWEB) $(LIBCIVETWEB_DEPS) $(LIBRGW_DEPS) $(RESOLV_LIBS) \
-	$(CEPH_GLOBAL)
+radosgw_CXXFLAGS = -fPIC -I$(srcdir)/xxHash ${CIVETWEB_INCLUDE}
+radosgw_CFLAGS = -fPIC -I$(srcdir)/xxHash ${CIVETWEB_INCLUDE}  ${CIVETWEB_DEFINES} -I$(builddir)/include/civetweb
+radosgw_LDADD = $(LIBRGW) $(LIBCIVETWEB) $(LIBCIVETWEB_DEPS) $(LIBRGW_DEPS) \
+	$(RESOLV_LIBS) $(CEPH_GLOBAL)
 bin_PROGRAMS += radosgw
 
 radosgw_admin_SOURCES = rgw/rgw_admin.cc rgw/rgw_orphan.cc
@@ -257,10 +264,7 @@ noinst_HEADERS += \
 	rgw/rgw_civetweb_log.h \
 	rgw/rgw_website.h \
 	rgw/rgw_rest_s3website.h \
-	civetweb/civetweb.h \
-	civetweb/include/civetweb.h \
-	civetweb/include/civetweb_conf.h \
-	civetweb/src/md5.h
+	civetweb/include/civetweb.h
 
 endif # WITH_RADOSGW
 endif # WITH_RADOS
