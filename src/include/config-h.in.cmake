@@ -173,17 +173,11 @@
 /* Define to 1 if you have the <sys/vfs.h> header file. */
 #cmakedefine HAVE_SYS_VFS_H 1
 
-/* Define to 1 if you have <sys/wait.h> that is POSIX.1 compatible. */
-#cmakedefine HAVE_SYS_WAIT_H
-
 /* Define to 1 if you have the <sys/xattr.h> header file. */
 #cmakedefine HAVE_SYS_XATTR_H
 
 /* Define to 1 if you have the <unistd.h> header file. */
 #cmakedefine HAVE_UNISTD_H
-
-/* Define to 1 if you have the <utime.h> header file. */
-#cmakedefine HAVE_UTIME_H
 
 /* Define if you have the <execinfo.h> header file. */
 #cmakedefine HAVE_EXECINFO_H
