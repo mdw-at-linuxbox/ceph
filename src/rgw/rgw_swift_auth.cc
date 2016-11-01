@@ -550,6 +550,9 @@ void RGW_SWIFT_Auth_Get::execute()
       swift_url.append(":");
       swift_url.append(server_port);
     }
+// XXX start temp debug only not for distribution, not for production
+derr << "Q-SWIFT: swift_url=<" << swift_url << "> server_port=<" << server_port << ">" << dendl;
+// XXX end temp debug only not for distribution, not for production
   }
 
   if (!key || !user)
