@@ -45,3 +45,7 @@
 [submodule "src/boost"]
 	path = src/boost
 	url = https://github.com/boostorg/boost.git
+[submodule "src/zxid/src"]
+	path = src/zxid/src
+	url = git@github.com:mdw-at-linuxbox/zxid
+	branch = ceph-post-pd

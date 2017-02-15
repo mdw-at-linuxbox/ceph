@@ -891,6 +891,7 @@ if(WITH_RADOSGW OR WITH_RGW_STS)
     add_subdirectory(rgw)
   endif(WITH_RADOSGW)
   if(WITH_RGW_STS)
+    add_subdirectory(zxid)
     add_subdirectory(sts)
   endif(WITH_RGW_STS)
 
