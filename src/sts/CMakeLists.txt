@@ -16,10 +16,19 @@ if (WITH_RADOSGW_ASIO_FRONTEND)
 endif (WITH_RADOSGW_ASIO_FRONTEND)
 # end ugh
 
-add_executable(rgw-sts ${rgw_sts_srcs}  $<TARGET_OBJECTS:civetweb_common_objs>)
+set(zxid_utility_files postdata.c rgw_zxid.c storage_pool.c)
+add_library(zxid_utility_objs OBJECT ${zxid_utility_files})
+target_include_directories(zxid_utility_objs PRIVATE
+"${CMAKE_BINARY_DIR}/src/zxid"
+)
+
+add_executable(rgw-sts ${rgw_sts_srcs}
+  $<TARGET_OBJECTS:civetweb_common_objs>
+  $<TARGET_OBJECTS:zxid_utility_objs>)
 target_link_libraries(rgw-sts rgw_a
   fcgi ${LIB_RESOLV}
-  ${CURL_LIBRARIES} ${EXPAT_LIBRARIES} ${SSL_LIBRARIES} ${BLKID_LIBRARIES}
+  ceph-zxid
+  ${CURL_LIBRARIES} ${EXPAT_LIBRARIES} ssl crypto ${SSL_LIBRARIES} ${BLKID_LIBRARIES}
   ${ALLOC_LIBS})
 target_include_directories(rgw-sts PRIVATE
 "${CMAKE_SOURCE_DIR}/src/rgw"
