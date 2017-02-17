@@ -1,6 +1,15 @@
+#include <pthread.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
 #include <openssl/evp.h>
+
+#include <curl/curl.h>
+
+/* ughugh. zxid.h needs these next 3 to make zxid_conf proper size... */
+#define USE_CURL 1
+#define USE_PTHREAD 1
+#define USE_OPENSSL 1
 
 #include <zx/platform.h>
 #include <zx/errmac.h>
@@ -14,11 +23,27 @@
 #include "civetweb/civetweb.h"
 
 #include "postdata.h"
+#include "storage_pool.h"
 
-// XXX #include "m.h"
 #include "rgw_zxid.h"
 
+// XXX needs work, should be configurable (at least)
+char *zxid_confstr = "PATH=/tmp/zxid/&SSO_PAT=/test-sp/**&DEBUG=1";
+
 int Dflag;	// XXX fixme
+pthread_key_t local_store;
+
+/* per-thread storage */
+struct zxid_work {
+  struct s_store store[1];
+};
+
+/* per-connection storage */
+struct zxid_conn_data {
+  zxid_ses *ses;
+  zxid_conf cf[1];
+  int foo[128]; /* paranoia */
+};
 
 int postdata_mg_write(void *a, char *buf, int len)
 {
@@ -136,7 +161,7 @@ ltemp = malloc(1024);
 r = pretty_print_expand(p1, p-p1, ltemp, 1024);
 fprintf(stderr,"zmhpzso: Huh?  L: %d<%s>\n", r, ltemp);
 }
-fprintf(stderr,"zmhpzso: zero %lx/%d\n", savedp, p-savedp);
+fprintf(stderr,"zmhpzso: zero %p/%d\n", savedp, p-savedp);
 memset(savedp, 'X', p-savedp);
 }
     } else
@@ -398,4 +423,217 @@ fprintf(stderr,"zp2e: too many envs(max=%d)\n", maxn);
   }
 Done:
   return envn;
+}
+
+void
+read_postdata(struct postdata_bufs **outp, struct mg_connection *conn)
+{
+  struct mg_request_info const *req_info = mg_get_request_info(conn);
+  int i;
+  char const *cl = 0;
+  for (i = 0; i < req_info->num_headers; ++i) {
+    if (!strncasecmp("content-length",
+        req_info->http_headers[i].name, 14))
+      cl = req_info->http_headers[i].value;
+  }
+  char *ep = 0;
+  int c, sofar;
+#if 0
+  int totlen = cl ? strtol(cl, &ep, 0) : -1;
+  if (vflag && cl)
+    fprintf(stdout, "reading content: %d\n", totlen);
+#endif
+  for (sofar = 0;;sofar += c) {
+    char buf[500];
+    c = mg_read(conn, buf, sizeof buf);
+    if (c <= 0) break;
+    append_postdata(outp,  buf, c);
+  }
+}
+
+void *memory_reallocator_for_zxid(void *p, size_t n)
+{
+  char *r;
+  int oldn;
+  void *data;
+  struct zxid_work *work = 0;
+
+  data = pthread_getspecific(local_store);
+  if (data) {
+    work = (struct zxid_work *) data;
+  }
+
+  if (p) {
+    r = p;
+    r -= 16;
+    oldn = *((int *)r);
+  }
+  n += 16;
+  char *new = storage_pool_alloc(work->store, n);
+  if (!new) {
+    return 0;
+  }
+  *((int *)new) = n;
+  if (p) {
+    if (n > oldn) n = oldn;
+    memcpy(new+16, r+16, n - 16);
+  }
+  return new+16;
+}
+
+void *memory_allocator_for_zxid(size_t n)
+{
+  return memory_reallocator_for_zxid(0, n);
+}
+
+void memory_free_for_zxid(void *p)
+{
+}
+
+void discard_connection_cdata(const struct mg_connection *conn)
+{
+  void *p;
+  struct zxid_conn_data *cdata;
+  struct zx_ctx *ctx;
+  p = mg_get_user_connection_data(conn);
+  mg_set_user_connection_data(conn, NULL);
+  cdata = (struct zxid_conn_data *) p;
+  if (!cdata) return;
+  curl_easy_cleanup(cdata->cf->curl);
+  cdata->cf->curl = 0;
+  cdata->cf->cpath = 0; /* parsed substring, not strdup */
+        /* note that cpath gets alloc'd,
+         * then clobbered, leak there!
+         */
+  if (cdata) {
+    ctx = cdata->cf->ctx;
+    zxid_free_conf(cdata->cf);
+if (Dflag) fprintf(stderr,"free cdata: %p [%x]\n", cdata, cdata->foo[0]);
+    memset(cdata, 0xaa, sizeof *cdata);
+    free(cdata);
+    if (ctx)
+      zx_free_ctx(ctx);
+  }
+}
+
+void zxid_thread_cleanup(const struct mg_connection *conn)
+{
+  void *data;
+  struct zxid_work *work = 0;
+
+  // eventually, don't do this.
+  discard_connection_cdata(conn);
+  // but need much smarter storage allocation help
+  // in zxid first.
+
+  // delete everything that zxid asked for (this thread)
+  data = pthread_getspecific(local_store);
+  if (data) {
+    work = (struct zxid_work *) data;
+    storage_pool_release(work->store);
+  }
+}
+
+static void local_destroy(void *data)
+{
+  struct zxid_work *work = data;
+  if (data) {
+    storage_pool_release(work->store);
+    free(data);
+  }
+  pthread_setspecific(local_store, NULL);
+}
+
+int rgw_initialize_zxid(void)
+{
+  if (!!pthread_key_create(&local_store, local_destroy)) {
+    perror("pthread_key_create");
+    return 1;
+  }
+  return 0;
+}
+
+int rgw_zxid_begin_request(const struct mg_connection *conn, zxid_results**rp)
+{
+  struct mg_request_info const *req_info = mg_get_request_info(conn);
+  void *p;
+  void *data;
+  struct zxid_work *work = 0;
+  int r = 0;
+  struct zxid_conn_data *cdata = 0;
+  struct postdata_bufs *postdata = 0;
+
+  data = pthread_getspecific(local_store);
+  if (data) {
+    work = (struct zxid_work *) data;
+  } else {
+    work = malloc(sizeof *work);
+    memset(work, 0, sizeof *work);
+    if (!!pthread_setspecific(local_store, work)) {
+      perror("my_begin_request");
+      goto Done;  // 0 ???
+    }
+  }
+  p = mg_get_user_connection_data(conn);
+  if (p) {
+    cdata = (struct zxid_conn_data *) p;
+  } else {
+    cdata = malloc(sizeof *cdata);
+if (Dflag) fprintf(stderr,"allocate cdata: %d => %p\n", (int)(sizeof *cdata), cdata);
+    memset(cdata, 0, sizeof *cdata);
+    memset(cdata->foo, 0xaa, sizeof cdata->foo);
+    mg_set_user_connection_data(conn, cdata);
+  }
+if (Dflag) fprintf(stderr,"begin-request #0: %p [%x]\n", cdata, cdata->foo[0]);
+
+  if (!cdata->cf->ctx) {
+    /* zxid_new_conf_to_cf - can't use, want
+      custom memory allocator.
+    */
+    cdata->cf->ctx = zx_init_ctx();
+    cdata->cf->ctx->malloc_func = memory_allocator_for_zxid;
+    cdata->cf->ctx->realloc_func = memory_reallocator_for_zxid;
+    cdata->cf->ctx->free_func = memory_free_for_zxid;
+if (Dflag) fprintf(stderr,"begin-request #92: %p [%x]\n", cdata, cdata->foo[0]);
+    zxid_conf_to_cf_len(cdata->cf, -1, zxid_confstr);
+//NO!   cdata->cf = zxid_new_conf_to_cf(zxid_confstr);
+  }
+if (Dflag) fprintf(stderr,"begin-request #1: %p [%x]\n", cdata, cdata->foo[0]);
+
+#if 0
+  if (vflag) {
+    fprintf (stdout, "method: %s\n", req_info->request_method);
+    fprintf (stdout, "uri: %s\n", req_info->uri);
+    if (req_info->query_string)
+      fprintf (stdout, "qs: %s\n", req_info->query_string);
+    fprintf (stdout, "user: %s\n", req_info->remote_user);
+    for (i = 0; i < req_info->num_headers; ++i) {
+      fprintf (stdout, "hd%d: %s=%s\n", i,
+        req_info->http_headers[i].name,
+        req_info->http_headers[i].value);
+    }
+  }
+#endif
+  if (!strcmp(req_info->request_method, "POST")) {
+    read_postdata(&postdata, (struct mg_connection *) conn);
+    if (postdata) {
+      int sofar = 0;
+      struct postdata_bufs *thisp;
+      for (thisp = postdata; thisp; thisp = thisp->next) {
+        fprintf (stdout, "dt%d-%d: %.*s\n",
+          sofar, sofar+thisp->len,
+          thisp->len, thisp->data);
+        sofar += thisp->len;
+      }
+    }
+  }
+if (Dflag) fprintf(stderr,"begin-request #2: %p [%x]\n", cdata, cdata->foo[0]);
+  r = zxid_mini_httpd_filter(cdata->cf, (struct mg_connection *) conn,
+	postdata, &cdata->ses);
+  if (r)
+    goto Done;
+Done:
+  free_postdata(postdata);
+if (Dflag) fprintf(stderr,"begin-request #5: %p [%x]\n", cdata, cdata->foo[0]);
+  return r;
 }

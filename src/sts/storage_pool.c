@@ -3,7 +3,7 @@
 #include "storage_pool.h"
 
 void *
-my_s_alloc(struct s_store *store, size_t size)
+storage_pool_alloc(struct s_store *store, size_t size)
 {
   void *r;
   size = ((size + SALIGN) & ~SALIGN);
@@ -27,12 +27,12 @@ my_s_alloc(struct s_store *store, size_t size)
 }
 
 void
-my_s_free(void *p)
+storage_pool_free(void *p)
 {
 }
 
 void
-my_s_release(struct s_store *store)
+storage_pool_release(struct s_store *store)
 {
   struct s_segment *s, *next;
   for (s = store->s_first; s; s = next) {
@@ -43,7 +43,7 @@ my_s_release(struct s_store *store)
   memset(store, 0, sizeof *store);
 }
 
-void my_s_init(struct s_store *store)
+void storage_pool_init(struct s_store *store)
 {
   memset(store, 0, sizeof *store);
 }

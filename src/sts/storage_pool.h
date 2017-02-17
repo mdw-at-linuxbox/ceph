@@ -13,7 +13,7 @@ struct s_store {
   int s_left;
 };
 
-void *my_s_alloc(struct s_store *, size_t);
-void my_s_free(void *);
-void my_s_release(struct s_store *);
-void my_s_init(struct s_store *);
+void *storage_pool_alloc(struct s_store *, size_t);
+void storage_pool_free(void *);
+void storage_pool_release(struct s_store *);
+void storage_pool_init(struct s_store *);

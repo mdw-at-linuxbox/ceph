@@ -55,6 +55,8 @@
 #include "include/types.h"
 #include "common/BackTrace.h"
 
+#include "rgw_zxid.h"
+
 #define dout_subsys ceph_subsys_sts
 
 using namespace std;
@@ -86,6 +88,7 @@ struct STSRequest
   struct req_state *s;
   string req_str;
   utime_t ts;
+  zxid_results *zresults;
 
   STSRequest(uint64_t id) : id(id), op(NULL), s(NULL) {
   }
@@ -561,7 +564,7 @@ void STSFCGXProcess::handle_request(STSRequest *r)
   delete req;
 }
 
-static int civetweb_callback(struct mg_connection *conn) {
+static int sts_civetweb_begin_request_callback(struct mg_connection *conn) {
   const struct mg_request_info *req_info = mg_get_request_info(conn);
   STSProcessEnv *pe = static_cast<STSProcessEnv *>(req_info->user_data);
   RGWREST *rest = pe->rest;
@@ -576,7 +579,12 @@ static int civetweb_callback(struct mg_connection *conn) {
 
   STSRequest req(pe->store->get_new_req_id());
 
-  int ret = process_request(pe->store, rest, &req, pe->uri_prefix, &client_io);
+  int ret = rgw_zxid_begin_request(conn, &req.zresults);
+  if (ret) {
+    return ret;
+  }
+
+  ret = process_request(pe->store, rest, &req, pe->uri_prefix, &client_io);
   if (ret < 0) {
     /* we don't really care about return code */
     dout(20) << "process_request() returned " << ret << dendl;
@@ -586,17 +594,16 @@ static int civetweb_callback(struct mg_connection *conn) {
   return 1;
 }
 
-#ifdef HAVE_CURL_MULTI_WAIT
-static void check_curl()
+void sts_civetweb_connection_close_callback(const struct mg_connection *conn)
 {
+  discard_connection_cdata(conn);
 }
-#else
-static void check_curl()
+
+void sts_civetweb_end_request_callback(const struct mg_connection *conn,
+  int reply_status_code)
 {
-  derr << "WARNING: libcurl doesn't support curl_multi_wait()" << dendl;
-  derr << "WARNING: cross zone / region transfer performance may be affected" << dendl;
+  zxid_thread_cleanup(conn);
 }
-#endif
 
 class C_InitTimeout : public Context {
 public:
@@ -792,6 +799,9 @@ public:
     set_conf_default(conf_map, "num_threads", thread_pool_buf);
     set_conf_default(conf_map, "decode_url", "no");
 
+    int r = rgw_initialize_zxid();
+    if (r) return -EIO;
+
     const char *options[conf_map.size() * 2 + 1];
     int i = 0;
     for (map<string, string>::iterator iter = conf_map.begin(); iter != conf_map.end(); ++iter) {
@@ -802,12 +812,15 @@ public:
     }
     options[i] = NULL;
 
-    struct mg_callbacks cb;
-    memset((void *)&cb, 0, sizeof(cb));
-    cb.begin_request = civetweb_callback;
-    cb.log_message = rgw_civetweb_log_callback;
-    cb.log_access = rgw_civetweb_log_access_callback;
-    ctx = mg_start(&cb, &env, (const char **)&options);
+    struct mg_callbacks cb[1];
+    memset(cb, 0, sizeof *cb);
+    cb->begin_request = sts_civetweb_begin_request_callback;
+    cb->log_message = rgw_civetweb_log_callback;
+    cb->log_access = rgw_civetweb_log_access_callback;
+    cb->connection_close = sts_civetweb_connection_close_callback;
+    cb->end_request = sts_civetweb_end_request_callback;
+
+    ctx = mg_start(cb, &env, (const char **)&options);
 
     return !ctx ? -EIO : 0;
   }
@@ -884,7 +897,10 @@ int main(int argc, const char **argv)
     }
   }
 
-  check_curl();
+#ifdef HAVE_CURL_MULTI_WAIT
+  derr << "WARNING: libcurl doesn't support curl_multi_wait()" << dendl;
+  derr << "WARNING: cross zone / region transfer performance may be affected" << dendl;
+#endif
 
   if (g_conf->daemonize) {
     global_init_daemonize(g_ceph_context);
