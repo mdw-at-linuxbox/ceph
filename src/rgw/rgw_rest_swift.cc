@@ -666,7 +666,7 @@ static inline int handle_metadata_errors(req_state* const s, const int op_ret)
   } else if (op_ret == -E2BIG) {
     const auto error_message = boost::str(
       boost::format("Too many metadata items; max %lld")
-        % s->cct->_conf->get_val<int>("rgw_max_attrs_num_in_req"));
+        % s->cct->_conf->get_val<size_t>("rgw_max_attrs_num_in_req"));
     set_req_state_err(s, EINVAL, error_message);
     return -EINVAL;
   }
