@@ -460,14 +460,13 @@ int RGWSwift::update_user_info(RGWRados *store, struct rgw_swift_auth_info *info
   return 0;
 }
 
-int RGWSwift::validate_keystone_token(RGWRados *store, const string& token,
-				      RGWUserInfo& rgw_user)
+int RGWSwift::validate_keystone_token(RGWRados *store, req_state *s)
 {
   KeystoneToken t;
   struct rgw_swift_auth_info info;
 
   string token_id;
-  rgw_get_token_id(token, token_id);
+  rgw_get_token_id(s->os_auth_token, token_id);
 
   ldout(cct, 20) << "token_id=" << token_id << dendl;
 
@@ -477,7 +476,7 @@ int RGWSwift::validate_keystone_token(RGWRados *store, const string& token,
 
     ldout(cct, 20) << "cached token.project.id=" << t.get_project_id() << dendl;
 
-    int ret = update_user_info(store, &info, rgw_user);
+    int ret = update_user_info(store, &info, *s->user);
     if (ret < 0)
       return ret;
 
@@ -487,7 +486,7 @@ int RGWSwift::validate_keystone_token(RGWRados *store, const string& token,
   bufferlist bl;
 
   /* check if that's a self signed token that we can decode */
-  if (!rgw_decode_pki_token(cct, token, bl)) {
+  if (!rgw_decode_pki_token(cct, s->os_auth_token, bl)) {
 
     /* can't decode, just go to the keystone server for validation */
 
@@ -511,11 +510,11 @@ int RGWSwift::validate_keystone_token(RGWRados *store, const string& token,
     const auto keystone_version = KeystoneService::get_api_version();
     if (keystone_version == KeystoneApiVersion::VER_2) {
       url.append("v2.0/tokens/");
-      url.append(token);
+      url.append(s->os_auth_token);
     }
     if (keystone_version == KeystoneApiVersion::VER_3) {
       url.append("v3/auth/tokens");
-      validate.append_header("X-Subject-Token", token);
+      validate.append_header("X-Subject-Token", s->os_auth_token);
     }
 
     validate.set_send_length(0);
@@ -529,7 +528,7 @@ int RGWSwift::validate_keystone_token(RGWRados *store, const string& token,
 
   ldout(cct, 20) << "received response: " << bl.c_str() << dendl;
 
-  int ret = parse_keystone_token_response(token, bl, &info, t);
+  int ret = parse_keystone_token_response(s->os_auth_token, bl, &info, t);
   if (ret < 0)
     return ret;
 
@@ -542,7 +541,20 @@ int RGWSwift::validate_keystone_token(RGWRados *store, const string& token,
 
   keystone_token_cache->add(token_id, t);
 
-  ret = update_user_info(store, &info, rgw_user);
+  s->keystone_user_id = t.get_user_id();
+  s->keystone_user_name = t.get_user_name();
+  s->keystone_project_id = t.get_project_id();
+  s->keystone_project_name = t.get_project_name();
+  switch(t.version) {
+  case KeystoneApiVersion::VER_2:
+    s->keystone_auth_version = 2;
+    break;
+  case KeystoneApiVersion::VER_3:
+    s->keystone_auth_version = 3;
+    break;
+  }
+
+  ret = update_user_info(store, &info, *s->user);
   if (ret < 0)
     return ret;
 
@@ -782,7 +794,7 @@ bool RGWSwift::do_verify_swift_token(RGWRados *store, req_state *s)
   }
 
   if (supports_keystone()) {
-    int ret = validate_keystone_token(store, s->os_auth_token, *(s->user));
+    int ret = validate_keystone_token(store, s);
     return (ret >= 0);
   }
 

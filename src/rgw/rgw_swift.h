@@ -27,8 +27,7 @@ class RGWSwift {
   atomic_t down_flag;
 
   int validate_token(const char *token, struct rgw_swift_auth_info *info);
-  int validate_keystone_token(RGWRados *store, const string& token,
-			      RGWUserInfo& rgw_user);
+  int validate_keystone_token(RGWRados *store, req_state *s);
 
   int parse_keystone_token_response(const string& token,
                                     bufferlist& bl,
