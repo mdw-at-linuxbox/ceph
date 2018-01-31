@@ -36,7 +36,7 @@ public:
   void send_response_end();
 
   bool should_get_stats() { return need_stats; }
-  bool supports_account_metadata() { return true; }
+  bool supports_account_metadata() { return !doing_swift_cross_tenant; }
 };
 
 class RGWListBucket_ObjStore_SWIFT : public RGWListBucket_ObjStore {
