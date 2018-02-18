@@ -1056,6 +1056,10 @@ if(WITH_RADOSGW)
 	"${CMAKE_SOURCE_DIR}/src/civetweb/include")
   set_property(TARGET civetweb_common_objs
     APPEND PROPERTY COMPILE_DEFINITIONS USE_IPV6=1)
+  if (LIBSSL_API_DEFINE)
+    set_property(TARGET civetweb_common_objs
+      APPEND PROPERTY COMPILE_DEFINITIONS "${LIBSSL_API_DEFINE}")
+  endif()
   if (LIBSSL_SONAME)
     set_property(TARGET civetweb_common_objs
       APPEND PROPERTY COMPILE_DEFINITIONS SSL_LIB="${LIBSSL_SONAME}")
