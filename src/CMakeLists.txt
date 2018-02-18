@@ -1075,6 +1075,10 @@ if(WITH_RADOSGW)
     target_include_directories(civetweb_common_objs PRIVATE
       "${SSL_INCLUDE_DIR}")
   endif(USE_OPENSSL)
+  if (LIBSSL_API_DEFINE)
+    set_property(TARGET civetweb_common_objs
+      APPEND PROPERTY COMPILE_DEFINITIONS "${LIBSSL_API_DEFINE}")
+  endif()
   if (LIBSSL_SONAME)
     set_property(TARGET civetweb_common_objs
       APPEND PROPERTY COMPILE_DEFINITIONS SSL_LIB="${LIBSSL_SONAME}")

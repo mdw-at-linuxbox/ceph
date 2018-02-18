@@ -89,7 +89,14 @@ int RGWCivetWeb::init_env(CephContext *cct)
   }
 
   for (int i = 0; i < info->num_headers; i++) {
-    const struct mg_request_info::mg_header* header = &info->http_headers[i];
+#ifndef CIVETWEB_VERSION_MAJOR
+/* civetweb 1.8 has a nested structure */
+#define MG_HEADER_PREFIX	mg_request_info::
+#else
+/* civetweb 1.11 uses mg_header in mg_response_info too */
+#define MG_HEADER_PREFIX	/**/
+#endif
+    const struct MG_HEADER_PREFIX mg_header* header = &info->http_headers[i];
 
     if (header->name == nullptr || header->value==nullptr) {
       lderr(cct) << "client supplied malformatted headers" << dendl;
@@ -132,7 +139,7 @@ int RGWCivetWeb::init_env(CephContext *cct)
   env.set("REQUEST_METHOD", info->request_method);
   env.set("HTTP_VERSION", info->http_version);
   env.set("REQUEST_URI", info->request_uri); // get the full uri, we anyway handle abs uris later
-  env.set("SCRIPT_URI", info->uri); /* FIXME */
+  env.set("SCRIPT_URI", info->local_uri);
   if (info->query_string) {
     env.set("QUERY_STRING", info->query_string);
   }

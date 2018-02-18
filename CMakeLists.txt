@@ -410,8 +410,8 @@ if (WITH_RADOSGW)
     execute_process(
       COMMAND
 	"sh" "-c"
-	"objdump -p ${OPENSSL_SSL_LIBRARY} | sed -n 's/^  SONAME  *//p'"
-      OUTPUT_VARIABLE LIBSSL_SONAME
+	"objdump -pT ${OPENSSL_SSL_LIBRARY}"
+      OUTPUT_VARIABLE LIBSSL_OBJDUMP
       ERROR_VARIABLE OBJDUMP_ERRORS
       RESULT_VARIABLE OBJDUMP_RESULTS
       OUTPUT_STRIP_TRAILING_WHITESPACE)
@@ -420,6 +420,11 @@ if (WITH_RADOSGW)
     endif()
     if (NOT OBJDUMP_ERRORS STREQUAL "")
       message(WARNING "message from objdump: ${OBJDUMP_ERRORS}")
+    endif()
+    string(REGEX REPLACE ".*\n  *SONAME  *\([^ \n]*\)\n.*" "\\1"
+      LIBSSL_SONAME ${LIBSSL_OBJDUMP})
+    if (LIBSSL_OBJDUMP MATCHES "[^\n]* OPENSSL_init_ssl\n")
+      set(LIBSSL_API_DEFINE "OPENSSL_API_1_1")
     endif()
     execute_process(
       COMMAND
@@ -434,6 +439,9 @@ if (WITH_RADOSGW)
     endif()
     if (NOT OBJDUMP_ERRORS STREQUAL "")
       message(WARNING "message from objdump: ${OBJDUMP_ERRORS}")
+    endif()
+    if (LIBSSL_API_DEFINE)
+      message(STATUS "ssl api define: ${LIBSSL_API_DEFINE}")
     endif()
     message(STATUS "ssl soname: ${LIBSSL_SONAME}")
     message(STATUS "crypto soname: ${LIBCRYPTO_SONAME}")
