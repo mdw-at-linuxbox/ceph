@@ -41,7 +41,7 @@ print_ceph_ver() {
         ver_nice="Development"
     else
         ver=`head -1 $GIT_VERSION_FILE`
-        ver_nice=`tail -1 $GIT_VERSION_FILE | cut -c 2-`
+        ver_nice=`tail -1 $GIT_VERSION_FILE | sed 's|^v\([0-9]\)|\1|'`
     fi
 
     echo "#ifndef CEPH_VERSION_H"
