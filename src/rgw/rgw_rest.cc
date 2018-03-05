@@ -1079,6 +1079,7 @@ int RGWPutObj_ObjStore::get_data(bufferlist& bl)
     bufferptr bp(cl);
 
     const auto read_len  = recv_body(s, bp.c_str(), cl);
+ldout(s->cct, 0) << "get_data: requested " << cl << " got " << read_len << dendl;
     if (read_len < 0) {
       return read_len;
     }
