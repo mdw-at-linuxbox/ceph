@@ -110,7 +110,7 @@ set(librgw_common_srcs
   rgw_crypt_sanitize.cc
   rgw_iam_policy.cc
   sts-assume-role.cc
-)
+  rgw_rest_sts.cc)
 add_library(rgw_common OBJECT ${librgw_common_srcs})
 
 if(WITH_LTTNG)
