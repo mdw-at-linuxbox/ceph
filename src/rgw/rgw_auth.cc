@@ -385,7 +385,39 @@ void rgw::auth::RemoteApplier::to_str(std::ostream& out) const
       << ", is_admin=" << info.is_admin << ")";
 }
 
+bool static inline implicit_tenants_enabled_for_both(CephContext * const cct,
+	std::string &s, bool &split_mode)
+{
+  s = cct->_conf->get_val<std::string>("rgw_keystone_implicit_tenants");
+  bool r = boost::iequals(s, "both")
+	|| boost::iequals(s, "true")
+	|| boost::iequals(s, "1");
+  split_mode = !(r || boost::iequals(s, "0")
+	|| boost::iequals(s, "none")
+	|| boost::iequals(s, "false"));
+  return r;
+}
+
+std::tuple<bool,bool> rgw::auth::implicit_tenants_enabled_for_swift(CephContext * const cct)
+{
+  std::string s;
+  bool split_mode;
+  if (implicit_tenants_enabled_for_both(cct, s, split_mode))
+	return std::make_tuple(true, split_mode);
+  return std::make_tuple(split_mode && boost::iequals(s, "swift"), split_mode);
+}
+
+std::tuple<bool,bool> rgw::auth::implicit_tenants_enabled_for_s3(CephContext * const cct)
+{
+  std::string s;
+  bool split_mode;
+  if (implicit_tenants_enabled_for_both(cct, s, split_mode))
+	return std::make_tuple(true, split_mode);
+  return std::make_tuple(split_mode && boost::iequals(s, "s3"), split_mode);
+}
+
 void rgw::auth::RemoteApplier::create_account(const rgw_user& acct_user,
+                                              bool implicit_tenant,
                                               RGWUserInfo& user_info) const      /* out */
 {
   rgw_user new_acct_user = acct_user;
@@ -397,7 +429,7 @@ void rgw::auth::RemoteApplier::create_account(const rgw_user& acct_user,
 
   /* An upper layer may enforce creating new accounts within their own
    * tenants. */
-  if (new_acct_user.tenant.empty() && implicit_tenants) {
+  if (new_acct_user.tenant.empty() && implicit_tenant) {
     new_acct_user.tenant = new_acct_user.id;
   }
 
@@ -420,6 +452,8 @@ void rgw::auth::RemoteApplier::load_acct_info(RGWUserInfo& user_info) const     
    * that belongs to the authenticated identity. Another policy may be
    * applied by using a RGWThirdPartyAccountAuthApplier decorator. */
   const rgw_user& acct_user = info.acct_user;
+  bool split_mode, implicit_tenant;
+  std::tie(implicit_tenant, split_mode) = implicit_tenants(cct);
 
   /* Normally, empty "tenant" field of acct_user means the authenticated
    * identity has the legacy, global tenant. However, due to inclusion
@@ -432,7 +466,10 @@ void rgw::auth::RemoteApplier::load_acct_info(RGWUserInfo& user_info) const     
    * If that fails, we look up in the requested (possibly empty) tenant.
    * If that fails too, we create the account within the global or separated
    * namespace depending on rgw_keystone_implicit_tenants. */
-  if (acct_user.tenant.empty()) {
+
+  if (split_mode && !implicit_tenant)
+	;	/* suppress lookup for id used by "other" protocol */
+  else if (acct_user.tenant.empty()) {
     const rgw_user tenanted_uid(acct_user.id, acct_user.id);
 
     if (rgw_get_user_info_by_uid(store, tenanted_uid, user_info) >= 0) {
@@ -441,10 +478,15 @@ void rgw::auth::RemoteApplier::load_acct_info(RGWUserInfo& user_info) const     
     }
   }
 
-  if (rgw_get_user_info_by_uid(store, acct_user, user_info) < 0) {
-    ldout(cct, 0) << "NOTICE: couldn't map swift user " << acct_user << dendl;
-    create_account(acct_user, user_info);
+  if (split_mode && implicit_tenant)
+	;	/* suppress lookup for id used by "other" protocol */
+  else if (rgw_get_user_info_by_uid(store, acct_user, user_info) >= 0) {
+      /* Succeeded. */
+      return;
   }
+
+  ldout(cct, 0) << "NOTICE: couldn't map swift user " << acct_user << dendl;
+  create_account(acct_user, implicit_tenant, user_info);
 
   /* Succeeded if we are here (create_account() hasn't throwed). */
 }

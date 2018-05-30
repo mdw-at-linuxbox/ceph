@@ -344,6 +344,9 @@ protected:
  * Each new Strategy should be exposed to it. */
 class StrategyRegistry;
 
+std::tuple<bool,bool> implicit_tenants_enabled_for_swift(CephContext * const cct);
+std::tuple<bool,bool> implicit_tenants_enabled_for_s3(CephContext * const cct);
+
 /* rgw::auth::RemoteApplier targets those authentication engines which don't
  * need to ask the RADOS store while performing the auth process. Instead,
  * they obtain credentials from an external source like Keystone or LDAP.
@@ -396,9 +399,10 @@ protected:
   const acl_strategy_t extra_acl_strategy;
 
   const AuthInfo info;
-  const bool implicit_tenants;
+  std::tuple<bool,bool> (*implicit_tenants)(CephContext*const);
 
   virtual void create_account(const rgw_user& acct_user,
+                              bool implicit_tenant,
                               RGWUserInfo& user_info) const;          /* out */
 
 public:
@@ -406,7 +410,7 @@ public:
                 RGWRados* const store,
                 acl_strategy_t&& extra_acl_strategy,
                 const AuthInfo& info,
-                const bool implicit_tenants)
+                std::tuple<bool,bool> (*implicit_tenants)(CephContext*const))
     : cct(cct),
       store(store),
       extra_acl_strategy(std::move(extra_acl_strategy)),
