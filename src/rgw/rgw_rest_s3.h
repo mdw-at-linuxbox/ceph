@@ -887,42 +887,6 @@ public:
 };
 
 
-#if 0
-class S3AuthFactory : public rgw::auth::RemoteApplier::Factory,
-                      public rgw::auth::LocalApplier::Factory {
-  typedef rgw::auth::IdentityApplier::aplptr_t aplptr_t;
-  RGWRados* const store;
-  ImplicitTenants& implicit_tenant_context;
-
-public:
-  explicit S3AuthFactory(RGWRados* const store,
-			 ImplicitTenants& implicit_tenant_context)
-    : store(store),
-      implicit_tenant_context(implicit_tenant_context) {
-  }
-
-  aplptr_t create_apl_remote(CephContext* const cct,
-                             const req_state* const s,
-                             rgw::auth::RemoteApplier::acl_strategy_t&& acl_alg,
-                             const rgw::auth::RemoteApplier::AuthInfo &info
-                            ) const override {
-    return aplptr_t(
-      new rgw::auth::RemoteApplier(cct, store, std::move(acl_alg), info,
-                                   implicit_tenant_context,
-                                   rgw::auth::ImplicitTenants::IMPLICIT_TENANTS_S3));
-  }
-
-  aplptr_t create_apl_local(CephContext* const cct,
-                            const req_state* const s,
-                            const RGWUserInfo& user_info,
-                            const std::string& subuser) const override {
-      return aplptr_t(
-        new rgw::auth::LocalApplier(cct, user_info, subuser));
-  }
-};
-#endif
-
-
 } /* namespace s3 */
 } /* namespace auth */
 } /* namespace rgw */
