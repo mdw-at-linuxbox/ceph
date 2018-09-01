@@ -909,15 +909,11 @@ int RGWBucket::link(RGWBucketAdminOpState& op_state,
       return r;
     }
   } else {
-//    for (auto i = 0u; i < 15u; ++i ) {
-//      store->try_refresh_bucket_info(bucket_info, nullptr, &attrs);
-      attrs[RGW_ATTR_ACL] = aclbl;
-      bucket_info.bucket.tenant = tenant;
-      bucket_info.owner = user_info.user_id;
-      bucket_info.objv_tracker.version_for_read()->ver = 0;
-      r = store->put_bucket_instance_info(bucket_info, true, real_time(), &attrs);
-//      if (r != -ECANCELED) break;
-//    }
+    attrs[RGW_ATTR_ACL] = aclbl;
+    bucket_info.bucket.tenant = tenant;
+    bucket_info.owner = user_info.user_id;
+    bucket_info.objv_tracker.version_for_read()->ver = 0;
+    r = store->put_bucket_instance_info(bucket_info, true, real_time(), &attrs);
     if (r < 0) {
       set_err_msg(err_msg, "ERROR: failed writing bucket instance info: " + cpp_strerror(-r));
       return r;
