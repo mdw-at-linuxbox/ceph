@@ -942,15 +942,16 @@ int RGWBucket::link(RGWBucketAdminOpState& op_state,
     return r;
   }
   if (bucket != old_bucket) {
+    RGWObjVersionTracker ep_version;
+    *ep_version.version_for_read() = bucket_info.ep_objv;
     // like RGWRados::delete_bucket -- excepting no bucket_index work.
-    r = rgw_bucket_delete_bucket_obj(store, old_bucket.tenant, old_bucket.name, old_version);
+    r = rgw_bucket_delete_bucket_obj(store, old_bucket.tenant, old_bucket.name, ep_version);
     if (r < 0) {
       set_err_msg(err_msg, "failed to unlink old bucket endpoint");
       return r;
     }
     string entry = old_bucket.get_key();
-    RGWObjVersionTracker dummy_version;
-    r = rgw_bucket_instance_remove_entry(store, entry, &dummy_version);
+    r = rgw_bucket_instance_remove_entry(store, entry, &old_version);
     if (r < 0) {
       set_err_msg(err_msg, "failed to unlink old bucket info");
       return r;
