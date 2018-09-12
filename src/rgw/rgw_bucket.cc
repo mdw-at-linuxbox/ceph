@@ -876,7 +876,7 @@ int RGWBucket::link(RGWBucketAdminOpState& op_state,
   RGWAccessControlPolicy policy;
   ACLOwner owner;
   try {
-   auto iter = aclbl.cbegin();
+   auto iter = aclbl.begin();
    ::decode(policy, iter);
    owner = policy.get_owner();
   } catch (buffer::error& err) {
