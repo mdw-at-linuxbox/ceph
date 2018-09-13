@@ -903,7 +903,10 @@ int RGWBucket::link(RGWBucketAdminOpState& op_state,
   aclbl.clear();
   policy_instance.encode(aclbl);
 
-  if (bucket == old_bucket) {
+	// in jewel, rgw_bucket == ignores tenant.  MUST use newly
+	// added !=
+	//	...ick !
+  if (!(bucket != old_bucket)) {
     r = store->set_bucket_owner(bucket_info.bucket, owner);
     if (r < 0) {
       set_err_msg(err_msg, "failed to set bucket owner: " + cpp_strerror(-r));
