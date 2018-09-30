@@ -103,7 +103,7 @@ struct SessionToken {
     ENCODE_FINISH(bl);
   }
 
-  void decode(bufferlist::iterator& bl) {
+  void decode(bufferlist::const_iterator& bl) {
     DECODE_START(1, bl);
     decode(access_key_id, bl);
     decode(secret_access_key, bl);
