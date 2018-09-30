@@ -330,7 +330,7 @@ void set_req_state_err(struct rgw_err& err,	/* out */
   }
 
   if (prot_flags & RGW_REST_STS) {
-    if (search_err(rgw_http_sts_errors, err_no, is_website_redirect, err.http_ret, err.err_code))
+    if (search_err(rgw_http_sts_errors, err_no, err.http_ret, err.err_code))
       return;
   }
 
