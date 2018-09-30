@@ -461,6 +461,7 @@ void rgw::auth::RemoteApplier::load_acct_info(RGWUserInfo& user_info) const     
   /* Succeeded if we are here (create_account() hasn't throwed). */
 }
 
+
 /* rgw::auth::LocalApplier */
 /* static declaration */
 const std::string rgw::auth::LocalApplier::NO_SUBUSER;
@@ -555,8 +556,7 @@ rgw::auth::AnonymousEngine::authenticate(const req_state* const s) const
 
     auto apl = \
       apl_factory->create_apl_local(cct, s, user_info,
-                                    rgw::auth::LocalApplier::NO_SUBUSER,
-                                    boost::none, boost::none);
+                                    rgw::auth::LocalApplier::NO_SUBUSER);
     return result_t::grant(std::move(apl));
   }
 }

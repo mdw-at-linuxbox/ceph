@@ -4303,7 +4303,7 @@ rgw::auth::s3::LocalEngine::authenticate(
     return result_t::deny(-ERR_SIGNATURE_NO_MATCH);
   }
 
-  auto apl = apl_factory->create_apl_local(cct, s, user_info, k.subuser, boost::none, boost::none);
+  auto apl = apl_factory->create_apl_local(cct, s, user_info, k.subuser);
   return result_t::grant(std::move(apl), completer_factory(k.key));
 }
 

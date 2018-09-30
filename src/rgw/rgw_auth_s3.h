@@ -37,18 +37,17 @@ class STSAuthStrategy : public rgw::auth::Strategy,
                         public rgw::auth::LocalApplier::Factory {
   typedef rgw::auth::IdentityApplier::aplptr_t aplptr_t;
   RGWRados* const store;
-  rgw::auth::ImplicitTenants& implicit_tenant_context;
+
   STSEngine  sts_engine;
 
   aplptr_t create_apl_remote(CephContext* const cct,
                              const req_state* const s,
                              rgw::auth::RemoteApplier::acl_strategy_t&& acl_alg,
-                             const rgw::auth::RemoteApplier::AuthInfo info
+                             const rgw::auth::RemoteApplier::AuthInfo &info
                             ) const override {
     auto apl = rgw::auth::add_sysreq(cct, store, s,
       rgw::auth::RemoteApplier(cct, store, std::move(acl_alg), info,
-			      implicit_tenant_context,
-                              rgw::auth::ImplicitTenants::IMPLICIT_TENANTS_S3));
+			cct->_conf->rgw_keystone_implicit_tenants));
     return aplptr_t(new decltype(apl)(std::move(apl)));
   }
 
@@ -65,11 +64,9 @@ class STSAuthStrategy : public rgw::auth::Strategy,
 
 public:
   STSAuthStrategy(CephContext* const cct,
-		  rgw::auth::ImplicitTenants& implicit_tenant_context,
 		  RGWRados* const store,
 		  AWSEngine::VersionAbstractor* const ver_abstractor)
     : store(store),
-      implicit_tenant_context(implicit_tenant_context),
       sts_engine(cct, store, *ver_abstractor,
 		 static_cast<rgw::auth::LocalApplier::Factory*>(this),
 		 static_cast<rgw::auth::RemoteApplier::Factory*>(this)) {
@@ -161,8 +158,8 @@ class AWSAuthStrategy : public rgw::auth::Strategy,
                             const req_state* const s,
                             const RGWUserInfo& user_info,
                             const std::string& subuser,
-                            const boost::optional<vector<std::string> >& role_policies,
-                            const boost::optional<uint32_t>& perm_mask) const override {
+                            const boost::optional<vector<std::string> >& role_policies = boost::none,
+                            const boost::optional<uint32_t>& perm_mask = boost::none) const override {
     auto apl = rgw::auth::add_sysreq(cct, store, s,
       rgw::auth::LocalApplier(cct, user_info, subuser, role_policies, perm_mask));
     /* TODO(rzarzynski): replace with static_ptr. */
@@ -213,7 +210,7 @@ public:
       anonymous_engine(cct,
                        static_cast<rgw::auth::LocalApplier::Factory*>(this)),
       external_engines(cct, store, &ver_abstractor),
-      sts_engine(cct, implicit_tenant_context, store, &ver_abstractor),
+      sts_engine(cct, store, &ver_abstractor),
       local_engine(cct, store, ver_abstractor,
                    static_cast<rgw::auth::LocalApplier::Factory*>(this)) {
     /* The anonymous auth. */

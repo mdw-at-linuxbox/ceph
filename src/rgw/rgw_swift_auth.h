@@ -21,7 +21,7 @@ class TempURLApplier : public rgw::auth::LocalApplier {
 public:
   TempURLApplier(CephContext* const cct,
                  const RGWUserInfo& user_info)
-    : LocalApplier(cct, user_info, LocalApplier::NO_SUBUSER, boost::none, boost::none) {
+    : LocalApplier(cct, user_info, LocalApplier::NO_SUBUSER) {
   };
 
   void modify_request_state(req_state * s) const override; /* in/out */
@@ -201,8 +201,8 @@ class DefaultStrategy : public rgw::auth::Strategy,
                             const req_state* const s,
                             const RGWUserInfo& user_info,
                             const std::string& subuser,
-                            const boost::optional<vector<std::string> >& role_policies,
-                            const boost::optional<uint32_t>& perm_mask) const override {
+                            const boost::optional<vector<std::string> >& role_policies = boost::none,
+                            const boost::optional<uint32_t>& perm_mask = boost::none) const override {
     auto apl = \
       rgw::auth::add_3rdparty(store, s->account_name,
         rgw::auth::add_sysreq(cct, store, s,

@@ -886,6 +886,7 @@ public:
 
 class STSEngine : public AWSEngine {
   RGWRados* const store;
+  const rgw::auth::LocalApplier::Factory* const local_apl_factory;
   const rgw::auth::RemoteApplier::Factory* const remote_apl_factory;
 
   using acl_strategy_t = rgw::auth::RemoteApplier::acl_strategy_t;
@@ -908,9 +909,11 @@ public:
   STSEngine(CephContext* const cct,
               RGWRados* const store,
               const VersionAbstractor& ver_abstractor,
+              const rgw::auth::LocalApplier::Factory* const local_apl_factory,
               const rgw::auth::RemoteApplier::Factory* const remote_apl_factory)
     : AWSEngine(cct, ver_abstractor),
       store(store),
+      local_apl_factory(local_apl_factory),
       remote_apl_factory(remote_apl_factory) {
   }
 
@@ -958,8 +961,8 @@ public:
                             const req_state* const s,
                             const RGWUserInfo& user_info,
                             const std::string& subuser,
-                            const boost::optional<vector<std::string> >& role_policies,
-                            const boost::optional<uint32_t>& perm_mask) const override {
+                            const boost::optional<vector<std::string> >& role_policies = boost::none,
+                            const boost::optional<uint32_t>& perm_mask = boost::none) const override {
       return aplptr_t(
         new rgw::auth::LocalApplier(cct, user_info, subuser, role_policies, perm_mask));
   }
