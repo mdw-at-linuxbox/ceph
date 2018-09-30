@@ -10,6 +10,7 @@ public:
   RGWREST_STS() = default;
   int verify_permission() override;
   void send_response() override;
+  virtual const char* name() const override { return "?unknown_sts_op"; }
 };
 
 class RGWSTSAssumeRole : public RGWREST_STS {
@@ -25,7 +26,7 @@ public:
   RGWSTSAssumeRole() = default;
   void execute() override;
   int get_params();
-  const string name() override { return "assume_role"; }
+  const char* name() const override { return "assume_role"; }
   RGWOpType get_type() override { return RGW_STS_ASSUME_ROLE; }
 };
 
@@ -39,7 +40,7 @@ public:
   void execute() override;
   int verify_permission() override;
   int get_params();
-  const string name() override { return "get_keystone_session_token"; }
+  const char* name() const override { return "get_keystone_session_token"; }
   RGWOpType get_type() override { return RGW_STS_GET_SESSION_TOKEN; }
 };
 
