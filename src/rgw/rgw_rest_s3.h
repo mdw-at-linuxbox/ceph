@@ -886,7 +886,6 @@ public:
 
 class STSEngine : public AWSEngine {
   RGWRados* const store;
-  const rgw::auth::LocalApplier::Factory* const local_apl_factory;
   const rgw::auth::RemoteApplier::Factory* const remote_apl_factory;
 
   using acl_strategy_t = rgw::auth::RemoteApplier::acl_strategy_t;
@@ -909,11 +908,9 @@ public:
   STSEngine(CephContext* const cct,
               RGWRados* const store,
               const VersionAbstractor& ver_abstractor,
-              const rgw::auth::LocalApplier::Factory* const local_apl_factory,
               const rgw::auth::RemoteApplier::Factory* const remote_apl_factory)
     : AWSEngine(cct, ver_abstractor),
       store(store),
-      local_apl_factory(local_apl_factory),
       remote_apl_factory(remote_apl_factory) {
   }
 
