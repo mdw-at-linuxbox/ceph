@@ -90,31 +90,31 @@ struct SessionToken {
 
   void encode(bufferlist& bl) const {
     ENCODE_START(1, 1, bl);
-    ::encode(access_key_id, bl);
-    ::encode(secret_access_key, bl);
-    ::encode(expiration, bl);
-    ::encode(policy, bl);
-    ::encode(roleId, bl);
-    ::encode(user, bl);
-    ::encode(acct_name, bl);
-    ::encode(perm_mask, bl);
-    ::encode(is_admin, bl);
-    ::encode(acct_type, bl);
+    encode(access_key_id, bl);
+    encode(secret_access_key, bl);
+    encode(expiration, bl);
+    encode(policy, bl);
+    encode(roleId, bl);
+    encode(user, bl);
+    encode(acct_name, bl);
+    encode(perm_mask, bl);
+    encode(is_admin, bl);
+    encode(acct_type, bl);
     ENCODE_FINISH(bl);
   }
 
   void decode(bufferlist::iterator& bl) {
     DECODE_START(1, bl);
-    ::decode(access_key_id, bl);
-    ::decode(secret_access_key, bl);
-    ::decode(expiration, bl);
-    ::decode(policy, bl);
-    ::decode(roleId, bl);
-    ::decode(user, bl);
-    ::decode(acct_name, bl);
-    ::decode(perm_mask, bl);
-    ::decode(is_admin, bl);
-    ::decode(acct_type, bl);
+    decode(access_key_id, bl);
+    decode(secret_access_key, bl);
+    decode(expiration, bl);
+    decode(policy, bl);
+    decode(roleId, bl);
+    decode(user, bl);
+    decode(acct_name, bl);
+    decode(perm_mask, bl);
+    decode(is_admin, bl);
+    decode(acct_type, bl);
     DECODE_FINISH(bl);
   }
 };
