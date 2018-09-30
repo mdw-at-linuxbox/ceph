@@ -4356,7 +4356,7 @@ rgw::auth::s3::STSEngine::get_session_token(const boost::string_view& session_to
     return -EPERM;
   } else {
     dec_output.append('\0');
-    auto iter = dec_output.begin();
+    auto iter = dec_output.cbegin();
     decode(token, iter);
   }
   return 0;
@@ -4453,9 +4453,13 @@ rgw::auth::s3::STSEngine::authenticate(
                                             get_creds_info(token));
     return result_t::grant(std::move(apl), completer_factory(boost::none));
   } else {
+#if 0
     string subuser;
     auto apl = local_apl_factory->create_apl_local(cct, s, user_info, subuser, role_policies, token.perm_mask);
     return result_t::grant(std::move(apl), completer_factory(token.secret_access_key));
+#else
+assert(0);	// XXX need something here.
+#endif
   }
 }
 
