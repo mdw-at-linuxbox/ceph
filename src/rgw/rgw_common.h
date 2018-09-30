@@ -792,7 +792,7 @@ struct RGWUserInfo
       decode(mfa_ids, bl);
     }
     if (struct_v >= 21) {
-      ::decode(assumed_role_arn, bl);
+      decode(assumed_role_arn, bl);
     }
     DECODE_FINISH(bl);
   }
