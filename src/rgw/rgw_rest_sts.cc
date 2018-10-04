@@ -183,11 +183,36 @@ void RGWSTSAssumeRole::execute()
   }
 }
 
+string printable_even_binary_glop(const string &s)
+{
+  string r;
+  r.reserve(s.length());
+  for (auto is = s.begin(); is != s.end(); ++is) {
+    unsigned char c = *is;
+    if (c >= 0200) {
+	r.append("M-");
+	c &= 0177;
+    }
+    if (c < ' ')
+	r.push_back('^'), r.push_back(0100 + c);
+    else if (c == 0177)
+	r.append("^?");
+    else
+        r.push_back(c);
+  }
+  return r;
+}
+
 RGWOp *RGWHandler_REST_STS::op_post()
 {
   char buf[256];
+  if (s->content_length >= sizeof buf) { // >= to allow for trailing nul
+    /* need better error */
+    return nullptr;
+  }
   recv_body(s, buf, s->content_length);
-  ldout(s->cct, 0) << "Content of POST: " << buf << dendl;
+  buf[s->content_length] = 0;
+  ldout(s->cct, 0) << "Content of POST: " << printable_even_binary_glop(buf) << dendl;
   string post_body = buf;
 
   if (post_body.find("Action") != string::npos) {
@@ -198,7 +223,7 @@ RGWOp *RGWHandler_REST_STS::op_post()
       if (pos != string::npos) {
          std::string key = t.substr(0, pos);
          std::string value = t.substr(pos + 1, t.size() - 1);
-         ldout(s->cct, 0) << "Key: " << key << "Value: " << value << dendl;
+         ldout(s->cct, 0) << "Key: " << key << "Value: " << printable_even_binary_glop(value) << dendl;
          s->info.args.append(key, value);
        }
      }
