@@ -33,7 +33,8 @@ static constexpr auto RGW_AUTH_GRACE = std::chrono::minutes{15};
 bool is_time_skew_ok(time_t t);
 
 class STSAuthStrategy : public rgw::auth::Strategy,
-                        public rgw::auth::RemoteApplier::Factory {
+                        public rgw::auth::RemoteApplier::Factory,
+                        public rgw::auth::LocalApplier::Factory {
   typedef rgw::auth::IdentityApplier::aplptr_t aplptr_t;
   RGWRados* const store;
 
@@ -50,12 +51,24 @@ class STSAuthStrategy : public rgw::auth::Strategy,
     return aplptr_t(new decltype(apl)(std::move(apl)));
   }
 
+  aplptr_t create_apl_local(CephContext* const cct,
+                            const req_state* const s,
+                            const RGWUserInfo& user_info,
+                            const std::string& subuser,
+                            const boost::optional<vector<std::string> >& role_policies,
+                            const boost::optional<uint32_t>& perm_mask) const override {
+    auto apl = rgw::auth::add_sysreq(cct, store, s,
+      rgw::auth::LocalApplier(cct, user_info, subuser, role_policies, perm_mask));
+    return aplptr_t(new decltype(apl)(std::move(apl)));
+  }
+
 public:
   STSAuthStrategy(CephContext* const cct,
 		  RGWRados* const store,
 		  AWSEngine::VersionAbstractor* const ver_abstractor)
     : store(store),
       sts_engine(cct, store, *ver_abstractor,
+		 static_cast<rgw::auth::LocalApplier::Factory*>(this),
 		 static_cast<rgw::auth::RemoteApplier::Factory*>(this)) {
       if (cct->_conf->rgw_s3_auth_use_sts) {
         add_engine(Control::SUFFICIENT, sts_engine);
@@ -145,8 +158,8 @@ class AWSAuthStrategy : public rgw::auth::Strategy,
                             const req_state* const s,
                             const RGWUserInfo& user_info,
                             const std::string& subuser,
-                            const boost::optional<vector<std::string> >& role_policies,
-                            const boost::optional<uint32_t>& perm_mask) const override {
+                            const boost::optional<vector<std::string> >& role_policies = boost::none,
+                            const boost::optional<uint32_t>& perm_mask = boost::none) const override {
     auto apl = rgw::auth::add_sysreq(cct, store, s,
       rgw::auth::LocalApplier(cct, user_info, subuser, role_policies, perm_mask));
     /* TODO(rzarzynski): replace with static_ptr. */

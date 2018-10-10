@@ -466,8 +466,8 @@ public:
   LocalApplier(CephContext* const cct,
                const RGWUserInfo& user_info,
                std::string subuser,
-               const boost::optional<vector<std::string> >& role_policies,
-               const boost::optional<uint32_t>& perm_mask)
+               const boost::optional<vector<std::string> >& role_policies = boost::none,
+               const boost::optional<uint32_t>& perm_mask = boost::none)
     : user_info(user_info),
       subuser(std::move(subuser)) {
     if (role_policies) {
@@ -504,8 +504,8 @@ public:
                                       const req_state* s,
                                       const RGWUserInfo& user_info,
                                       const std::string& subuser,
-                                      const boost::optional<vector<std::string> >& role_policies,
-                                      const boost::optional<uint32_t>& perm_mask) const = 0;
+                                      const boost::optional<vector<std::string> >& role_policies = boost::none,
+                                      const boost::optional<uint32_t>& perm_mask = boost::none) const = 0;
     };
 };
 
