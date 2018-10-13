@@ -448,6 +448,22 @@ struct PolicyParseException : public std::exception {
   const char* what() const noexcept override {
     return rapidjson::GetParseError_En(pr.Code());
   }
+  string what_string() const {
+    stringstream ss;
+    ss << rapidjson::GetParseError_En(pr.Code());
+    if (pr.IsError()) {
+        ss.seekg(-1,ios_base::end);
+        char l(ss.get());
+	if (l == '.') {
+	    ss.seekp(-1,std::ios_base::end);
+	}
+	ss << " near offset " << pr.Offset();
+	if (l == '.') {
+	    ss << l;
+	}
+    }
+    return std::move(ss.str());
+  }
 };
 
 struct Policy {
