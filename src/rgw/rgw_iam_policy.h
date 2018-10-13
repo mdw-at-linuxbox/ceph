@@ -442,20 +442,30 @@ std::ostream& operator <<(ostream& m, const Statement& s);
 
 struct PolicyParseException : public std::exception {
   rapidjson::ParseResult pr;
+  boost::optional<std::string> more;
 
-  explicit PolicyParseException(rapidjson::ParseResult&& pr)
-    : pr(pr) { }
+  explicit PolicyParseException(rapidjson::ParseResult&& pr, boost::optional<std::string> &&more = boost::none)
+    : pr(pr), more(more) { }
   const char* what() const noexcept override {
     return rapidjson::GetParseError_En(pr.Code());
   }
   string what_string() const {
     stringstream ss;
-    ss << rapidjson::GetParseError_En(pr.Code());
+    switch(pr.Code()) {
+    case rapidjson::kParseErrorTermination:
+	ss << "Invalid Json policy element.";
+	break;
+    default:
+	ss << "Invalid Json: " << rapidjson::GetParseError_En(pr.Code());
+    }
     if (pr.IsError()) {
         ss.seekg(-1,ios_base::end);
         char l(ss.get());
 	if (l == '.') {
 	    ss.seekp(-1,std::ios_base::end);
+	}
+	if (more) {
+	    ss << more.get();
 	}
 	ss << " near offset " << pr.Offset();
 	if (l == '.') {

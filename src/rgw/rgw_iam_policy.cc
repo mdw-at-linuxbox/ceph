@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stack>
 #include <utility>
+#include <cstdarg>
 
 #include <experimental/iterator>
 
@@ -470,13 +471,7 @@ struct ParseState {
 
   bool obj_end();
 
-  bool array_start() {
-    if (w->arrayable && !arraying) {
-      arraying = true;
-      return true;
-    }
-    return false;
-  }
+  bool array_start();
 
   bool array_end();
 
@@ -493,6 +488,7 @@ struct PolicyParser : public BaseReaderHandler<UTF8<>, PolicyParser> {
   const string& tenant;
   Policy& policy;
   uint32_t v = 0;
+  boost::optional<std::string> clue = boost::none;
 
   uint32_t seen = 0;
 
@@ -609,12 +605,14 @@ struct PolicyParser : public BaseReaderHandler<UTF8<>, PolicyParser> {
   }
   bool EndObject(SizeType memberCount) {
     if (s.empty()) {
+      if (!clue) clue = " cannot end empty object";
       return false;
     }
     return s.back().obj_end();
   }
   bool Key(const char* str, SizeType length, bool copy) {
     if (s.empty()) {
+      if (!clue) clue = " cannot key empty object";
       return false;
     }
     return s.back().key(str, length);
@@ -622,12 +620,14 @@ struct PolicyParser : public BaseReaderHandler<UTF8<>, PolicyParser> {
 
   bool String(const char* str, SizeType length, bool copy) {
     if (s.empty()) {
+      if (!clue) clue = " no strings outside object";
       return false;
     }
     return s.back().do_string(cct, str, length);
   }
   bool RawNumber(const char* str, SizeType length, bool copy) {
     if (s.empty()) {
+      if (!clue) clue = " no strings outside object";
       return false;
     }
 
@@ -635,6 +635,7 @@ struct PolicyParser : public BaseReaderHandler<UTF8<>, PolicyParser> {
   }
   bool StartArray() {
     if (s.empty()) {
+      if (!clue) clue = " no arrays outside object";
       return false;
     }
 
@@ -642,6 +643,7 @@ struct PolicyParser : public BaseReaderHandler<UTF8<>, PolicyParser> {
   }
   bool EndArray(SizeType) {
     if (s.empty()) {
+      if (!clue) clue = " can't end array outside object";
       return false;
     }
 
@@ -649,6 +651,7 @@ struct PolicyParser : public BaseReaderHandler<UTF8<>, PolicyParser> {
   }
 
   bool Default() {
+    if (!clue) clue = " no martians";
     return false;
   }
 };
@@ -666,6 +669,25 @@ bool ParseState::obj_end() {
     }
     return true;
   }
+  if (!pp->clue) pp->clue = " no venusians";
+  return false;
+}
+
+template<class... Args>
+static inline
+std::string glue_cstrings(Args... args)
+{
+	std::stringstream ss;
+	(ss << ... << args);
+	return std::move(ss.str());
+}
+
+bool ParseState::array_start() {
+  if (w->arrayable && !arraying) {
+    arraying = true;
+    return true;
+  }
+  if (!pp->clue) pp->clue = glue_cstrings(' ', w->name, " may not be an array");
   return false;
 }
 
@@ -690,6 +712,7 @@ bool ParseState::key(const char* s, size_t l) {
       t.conditions.emplace_back(id, s, l, c_ife);
       return true;
     } else {
+      if (!pp->clue) pp->clue = glue_cstrings(' ', s, " is not a conditional op");
       return false;
     }
   }
@@ -718,6 +741,7 @@ bool ParseState::key(const char* s, size_t l) {
     pp->s.back().cond_ifexists = ifexists;
     return true;
   }
+  if (!pp->clue) pp->clue = glue_cstrings(" keyword ", k->name, " not allowed in ", w->name);
   return false;
 }
 
@@ -827,6 +851,7 @@ bool ParseState::do_string(CephContext* cct, const char* s, size_t l) {
 
   } else if (w->kind == TokenKind::princ_type) {
     if (pp->s.size() <= 1) {
+      if (!pp->clue) pp->clue = " missing or malformed principal";
       return false;
     }
     auto& pri = pp->s[pp->s.size() - 2].w->id == TokenID::Principal ?
@@ -840,6 +865,7 @@ bool ParseState::do_string(CephContext* cct, const char* s, size_t l) {
     // Failure
 
   } else {
+    if (!pp->clue) pp->clue = glue_cstrings(" element ", w->name, " not understood");
     return false;
   }
 
@@ -848,6 +874,7 @@ bool ParseState::do_string(CephContext* cct, const char* s, size_t l) {
   }
 
   if (is_action && !is_validaction){
+    if (!pp->clue) pp->clue = glue_cstrings(" invalid action ", w->name);
     return false;
   }
 
@@ -863,6 +890,7 @@ bool ParseState::number(const char* s, size_t l) {
     // Failure
 
   } else {
+    if (!pp->clue) pp->clue = " number not allowed here";
     return false;
   }
 
@@ -887,6 +915,7 @@ bool ParseState::obj_start() {
     return true;
   }
 
+  if (!pp->clue) pp->clue = " can't start object here";
   return false;
 }
 
@@ -897,6 +926,7 @@ bool ParseState::array_end() {
     return true;
   }
 
+  if (!pp->clue) pp->clue = " no array to end here";
   return false;
 }
 
@@ -1547,7 +1577,7 @@ Policy::Policy(CephContext* cct, const string& tenant,
   auto pr = Reader{}.Parse<kParseNumbersAsStringsFlag |
 			   kParseCommentsFlag>(ss, pp);
   if (!pr) {
-    throw PolicyParseException(std::move(pr));
+    throw PolicyParseException(std::move(pr), std::move(pp.clue));
   }
 }
 
