@@ -621,6 +621,28 @@ rgw::auth::Engine::result_t EC2Engine::authenticate(
   }
 }
 
+void rgw::auth::keystone::SecretCacheSize::recompute_value(const ConfigProxy& c)
+{
+  int64_t s = c.get_val<int64_t>("rgw_keystone_secret_cache_size");
+  saved = s;
+}
+
+const char **rgw::auth::keystone::SecretCacheSize::get_tracked_conf_keys() const
+{
+  static const char *keys[] = {
+    "rgw_keystone_secret_cache_size",
+  nullptr };
+  return keys;
+}
+
+void rgw::auth::keystone::SecretCacheSize::handle_conf_change(const ConfigProxy& c,
+	const std::set <std::string> &changed)
+{
+  if (changed.count("rgw_keystone_secret_cache_size")) {
+    recompute_value(c);
+  }
+}
+
 bool SecretCache::find(const std::string& token_id,
                        SecretCache::token_envelope_t& token,
 		       std::string &secret)
@@ -669,7 +691,7 @@ void SecretCache::add(const std::string& token_id,
   entry.expires = now + s3_token_expiry_length;
   entry.lru_iter = secrets_lru.begin();
 
-  while (secrets_lru.size() > max) {
+  while (secrets_lru.size() > max.get_value()) {
     list<string>::reverse_iterator riter = secrets_lru.rbegin();
     iter = secrets.find(*riter);
     assert(iter != secrets.end());

@@ -72,6 +72,21 @@ public:
   }
 }; /* class TokenEngine */
 
+class SecretCacheSize: public md_config_obs_t {
+private:
+  int64_t saved;
+  void recompute_value(const ConfigProxy& );
+public:
+  SecretCacheSize(const ConfigProxy& c) { recompute_value(c);}
+  int64_t get_value() {
+    return saved;
+  }
+private:
+  const char** get_tracked_conf_keys() const override;
+  void handle_conf_change(const ConfigProxy& conf,
+    const std::set <std::string> &changed) override;
+};
+
 class SecretCache {
   using token_envelope_t = rgw::keystone::TokenEnvelope;
 
@@ -89,14 +104,14 @@ class SecretCache {
 
   std::mutex lock;
 
-  const size_t max;
+  SecretCacheSize max;
 
   const utime_t s3_token_expiry_length;
 
   SecretCache()
     : cct(g_ceph_context),
       lock(),
-      max(cct->_conf->rgw_keystone_token_cache_size),
+      max(g_conf()),
       s3_token_expiry_length(300, 0) {
   }
 
