@@ -137,6 +137,7 @@ public:
     return boost::none;
   }
   void add(const std::string& token_id, const token_envelope_t& token, const std::string& secret);
+  bool empty() { return secrets_lru.empty(); }
 }; /* class SecretCache */
 
 class EC2Engine : public rgw::auth::s3::AWSEngine {

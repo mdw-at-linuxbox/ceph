@@ -481,10 +481,10 @@ EC2Engine::get_access_token(const DoutPrefixProvider* dpp,
   using server_signature_t = VersionAbstractor::server_signature_t;
   boost::optional<rgw::keystone::TokenEnvelope> token;
   int failure_reason;
+  boost::optional<boost::tuple<rgw::keystone::TokenEnvelope, std::string>> t;
 
   /* Get a token from the cache if one has already been stored */
-  boost::optional<boost::tuple<rgw::keystone::TokenEnvelope, std::string>>
-    t = secret_cache.find(access_key_id.to_string());
+  t = secret_cache.empty() ? nullptr : secret_cache.find(access_key_id.to_string());
 
   /* Check that credentials can correctly be used to sign data */
   if (t) {
@@ -496,7 +496,8 @@ EC2Engine::get_access_token(const DoutPrefixProvider* dpp,
       ldpp_dout(dpp, 0) << "Secret string does not correctly sign payload, cache miss" << dendl;
     }
   } else {
-    ldpp_dout(dpp, 0) << "No stored secret string, cache miss" << dendl;
+    if (secret_cache.max.get_value() > 0)
+      ldpp_dout(dpp, 10) << "No stored secret string, cache miss" << dendl;
   }
 
   /* No cached token, token expired, or secret invalid: fall back to keystone */
@@ -507,7 +508,7 @@ EC2Engine::get_access_token(const DoutPrefixProvider* dpp,
     boost::optional<std::string> secret;
     std::tie(secret, failure_reason) = get_secret_from_keystone(dpp, token->get_user_id(), access_key_id);
 
-    if (secret) {
+    if (secret && secret_cache.max.get_value() > 0) {
       /* Add token, secret pair to cache, and set timeout */
       secret_cache.add(access_key_id.to_string(), *token, *secret);
     }
