@@ -160,12 +160,17 @@ class EC2Engine : public rgw::auth::s3::AWSEngine {
                     const boost::string_view& access_key_id,
                     const std::string& string_to_sign,
                     const boost::string_view& signature) const;
+#ifdef CEPH_KEYSTONE_SECRET_CACHE
   std::pair<boost::optional<token_envelope_t>, int>
   get_access_token(const DoutPrefixProvider* dpp,
                    const boost::string_view& access_key_id,
                    const std::string& string_to_sign,
                    const boost::string_view& signature,
 		   const signature_factory_t& signature_factory) const;
+  std::pair<boost::optional<std::string>, int> get_secret_from_keystone(const DoutPrefixProvider* dpp,
+                                                                        const std::string& user_id,
+                                                                        const boost::string_view& access_key_id) const;
+#endif
   result_t authenticate(const DoutPrefixProvider* dpp,
                         const boost::string_view& access_key_id,
                         const boost::string_view& signature,
@@ -174,9 +179,6 @@ class EC2Engine : public rgw::auth::s3::AWSEngine {
                         const signature_factory_t& signature_factory,
                         const completer_factory_t& completer_factory,
                         const req_state* s) const override;
-  std::pair<boost::optional<std::string>, int> get_secret_from_keystone(const DoutPrefixProvider* dpp,
-                                                                        const std::string& user_id,
-                                                                        const boost::string_view& access_key_id) const;
 public:
   EC2Engine(CephContext* const cct,
             const rgw::auth::s3::AWSEngine::VersionAbstractor* const ver_abstractor,

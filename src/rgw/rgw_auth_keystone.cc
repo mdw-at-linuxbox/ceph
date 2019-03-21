@@ -380,6 +380,7 @@ EC2Engine::get_from_keystone(const DoutPrefixProvider* dpp, const boost::string_
   return std::make_pair(std::move(token_envelope), 0);
 }
 
+#ifdef CEPH_KEYSTONE_SECRET_CACHE
 std::pair<boost::optional<std::string>, int> EC2Engine::get_secret_from_keystone(const DoutPrefixProvider* dpp,
                                                                                  const std::string& user_id,
                                                                                  const boost::string_view& access_key_id) const
@@ -514,6 +515,7 @@ EC2Engine::get_access_token(const DoutPrefixProvider* dpp,
 
   return std::make_pair(token, failure_reason);
 }
+#endif
 
 EC2Engine::acl_strategy_t
 EC2Engine::get_acl_strategy(const EC2Engine::token_envelope_t&) const
@@ -579,9 +581,12 @@ rgw::auth::Engine::result_t EC2Engine::authenticate(
     std::vector<std::string> admin;
   } accepted_roles(cct);
 
+#ifndef CEPH_KEYSTONE_SECRET_CACHE
+#define get_access_token(d,a,s,x,xf) get_from_keystone(d,a,s,x)
+#endif
   boost::optional<token_envelope_t> t;
   int failure_reason;
-  std::tie(t, failure_reason) = \
+  std::tie(t, failure_reason) =
     get_access_token(dpp, access_key_id, string_to_sign, signature, signature_factory);
   if (! t) {
     return result_t::deny(failure_reason);
