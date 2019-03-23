@@ -5751,7 +5751,7 @@ std::vector<Option> get_rgw_options() {
         "Implicitly create new users in their own tenant with the same name when "
         "authenticating via Keystone."),
 
-    Option("rgw_keystone_secret_cache_size", Option::TYPE_INT, Option::LEVEL_ADVANCED)
+    Option("rgw_keystone_secret_cache_size", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
     .set_default(1000)
     .set_description("Keystone secret key cache size")
     .set_long_description(

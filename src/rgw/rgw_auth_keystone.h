@@ -74,13 +74,22 @@ public:
 
 class SecretCacheSize: public md_config_obs_t {
 private:
-  int64_t saved;
+  uint64_t saved;
+  bool changed;
+  ConfigProxy& ic;
   void recompute_value(const ConfigProxy& );
 public:
-  SecretCacheSize(const ConfigProxy& c) { recompute_value(c);}
-  int64_t get_value() {
+  SecretCacheSize(ConfigProxy& _c)
+    : ic(_c) {
+    ic.add_observer(this);
+    recompute_value(ic);
+  }
+  ~SecretCacheSize() { ic.remove_observer(this); }
+  uint64_t get_value() {
     return saved;
   }
+  bool was_changed() { return changed; }
+  void reset_changed() { changed = false; }
 private:
   const char** get_tracked_conf_keys() const override;
   void handle_conf_change(const ConfigProxy& conf,
@@ -117,6 +126,8 @@ class SecretCache {
 
   ~SecretCache() {}
 
+  void _trim();
+
 public:
   SecretCache(const SecretCache&) = delete;
   void operator=(const SecretCache&) = delete;
@@ -137,7 +148,9 @@ public:
     return boost::none;
   }
   void add(const std::string& token_id, const token_envelope_t& token, const std::string& secret);
-  bool empty() { return secrets_lru.empty(); }
+  void trim();
+  inline bool disabled() { return max.get_value() == 0; }
+  inline bool empty() { if (max.was_changed()) trim(); return secrets_lru.empty(); }
 }; /* class SecretCache */
 
 class EC2Engine : public rgw::auth::s3::AWSEngine {
