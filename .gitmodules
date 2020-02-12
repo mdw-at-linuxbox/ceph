@@ -70,3 +70,7 @@
 [submodule "s3select"]
 	path = src/s3select
 	url = https://github.com/ceph/s3select.git
+[submodule "src/libkmip"]
+	path = src/libkmip
+	url = https://github.com/mdw-at-linuxbox/libkmip
+	branch = wip-morestuff
