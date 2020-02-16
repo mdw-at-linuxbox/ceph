@@ -4,6 +4,8 @@
 #ifndef CEPH_RGW_KMIP_CLIENT_H
 #define CEPH_RGW_KMIP_CLIENT_H
 
+class RGWKMIPManager;
+
 class RGWKMIPTransceiver {
 public:
 	enum kmip_operation {
@@ -14,17 +16,18 @@ public:
 		GET_ATTRIBUTE_LIST,
 		DESTROY
 	};
-protected:
 	CephContext *cct;
 	kmip_operation operation;
 	string key_name;
+	char *name = 0;
+	char *unique_id = 0;
+	char *out;
 	int ret;
 	bool done;
 	ceph::mutex lock = ceph::make_mutex("rgw_kmip_req::lock");
 	ceph::condition_variable cond;
 
 	int wait(optional_yield y);
-public:
 	RGWKMIPTransceiver(CephContext * const cct,
 		kmip_operation operation,
 		const boost::string_view & key_name
@@ -41,9 +44,9 @@ public:
 };
 
 class RGWKMIPManager {
+protected:
 	CephContext *cct;
 	bool is_started = false;
-protected:
 	RGWKMIPManager(CephContext *cct) : cct(cct) {};
 public:
 	virtual ~RGWKMIPManager() = 0;

@@ -3,9 +3,23 @@
 
 #ifndef CEPH_RGW_KMIP_CLIENT_IMPL_H
 #define CEPH_RGW_KMIP_CLIENT_IMPL_H
-class RGWKMIPManagerImpl: public RGWKMIPManager {
+class RGWKMIPManagerImpl: public RGWKMIPManager, public Thread {
+	ceph::mutex lock = ceph::make_mutex("RGWKMIPManager");
+	ceph::condition_variable cond;
+
+	struct Request : boost::intrusive::list_base_hook<> {
+		boost::intrusive::list_member_hook<> req_hook;
+		RGWKMIPTransceiver &details;
+		Request(RGWKMIPTransceiver &details) : details(details) {}
+	};
+	boost::intrusive::list<Request, boost::intrusive::member_hook< Request,
+	boost::intrusive::list_member_hook<>, &Request::req_hook>> requests;
+	bool going_down = false;
+protected:
+	void *entry();
 public:
 	RGWKMIPManagerImpl(CephContext *cct) : RGWKMIPManager(cct) {};
+	int add_request(RGWKMIPTransceiver *);
 	int start();
 	void stop();
 };
