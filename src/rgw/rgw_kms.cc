@@ -12,6 +12,7 @@
 #include "rgw/rgw_keystone.h"
 #include "rgw/rgw_b64.h"
 #include "rgw/rgw_kms.h"
+#include "rgw/rgw_kmip_client.h"
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw
@@ -251,6 +252,122 @@ public:
 };
 
 
+class KmipSecretEngine: public SecretEngine {
+
+protected:
+  CephContext *cct;
+
+  int send_request(boost::string_view key_id, JSONParser* parser) override
+  {
+    int res;
+#if 0
+    bufferlist secret_bl;
+    string vault_token = "";
+    if (RGW_SSE_KMS_VAULT_AUTH_TOKEN == cct->_conf->rgw_crypt_kmip_auth){
+      ldout(cct, 0) << "Loading Kmip Token from filesystem" << dendl;
+      res = load_token_from_file(&vault_token);
+      if (res < 0){
+        return res;
+      }
+    }
+
+    std::string secret_url = cct->_conf->rgw_crypt_kmip_addr;
+    if (secret_url.empty()) {
+      ldout(cct, 0) << "ERROR: Kmip address not set in rgw_crypt_kmip_addr" << dendl;
+      return -EINVAL;
+    }
+
+    concat_url(secret_url, cct->_conf->rgw_crypt_kmip_prefix);
+    concat_url(secret_url, std::string(key_id));
+#endif
+
+    RGWKMIPTransceiver secret_req(cct, RGWKMIPTransceiver::GET, key_id);
+
+#if 0
+    if (!vault_token.empty()){
+      secret_req.append_header("X-Kmip-Token", vault_token);
+      vault_token.replace(0, vault_token.length(), vault_token.length(), '\000');
+    }
+
+    string kmip_key_template = cct->_conf->rgw_crypt_kmip_s3_key_template;
+    if (!kmip_key_template.empty()){
+      ldout(cct, 20) << "Kmip key template: " << kmip_key_template << dendl;
+      secret_req.append_header("X-Kmip-Namespace", kmip_key_template);
+    }
+#endif
+
+    res = secret_req.process(null_yield);
+    if (res < 0) {
+      ldout(cct, 0) << "ERROR: Request to Kmip failed with error " << res << dendl;
+      return res;
+    }
+#if 0
+
+    if (secret_req.get_http_status() ==
+        RGWHTTPTransceiver::HTTP_STATUS_UNAUTHORIZED) {
+      ldout(cct, 0) << "ERROR: Kmip request failed authorization" << dendl;
+      return -EACCES;
+    }
+
+    ldout(cct, 20) << "Request to Kmip returned " << res << " and HTTP status "
+      << secret_req.get_http_status() << dendl;
+
+    ldout(cct, 20) << "Parse response into JSON Object" << dendl;
+
+    if (!parser->parse(secret_bl.c_str(), secret_bl.length())) {
+      ldout(cct, 0) << "ERROR: Failed to parse JSON response from Kmip" << dendl;
+      return -EINVAL;
+    }
+    secret_bl.zero();
+#endif
+
+    return res;
+  }
+
+  int decode_secret(JSONObj* json_obj, std::string& actual_key){
+    return -EINVAL;
+  }
+
+public:
+
+  KmipSecretEngine(CephContext *cct) {
+    this->cct = cct;
+  }
+
+  int get_key(boost::string_view key_id, std::string& actual_key)
+  {
+    JSONParser parser;
+    string version;
+
+#if 0
+    if (get_key_version(key_id, version) < 0){
+      ldout(cct, 20) << "Missing or invalid key version" << dendl;
+      return -EINVAL;
+    }
+
+    int res = send_request(key_id, &parser);
+    if (res < 0) {
+      return res;
+    }
+
+    JSONObj* json_obj = &parser;
+    std::array<std::string, 3> elements = {"data", "keys", version};
+    for(const auto& elem : elements) {
+      json_obj = json_obj->find_obj(elem);
+      if (!json_obj) {
+        ldout(cct, 0) << "ERROR: Key not found in JSON response from Vault using Transit Engine" << dendl;
+        return -EINVAL;
+      }
+    }
+
+    return decode_secret(json_obj, actual_key);
+#else
+    return -EINVAL;
+#endif
+  }
+};
+
+
 static map<string,string> get_str_map(const string &str) {
   map<string,string> m;
   get_str_map(str, &m, ";, \t");
@@ -383,6 +500,28 @@ static int get_actual_key_from_vault(CephContext *cct,
 }
 
 
+static int get_actual_key_from_kmip(CephContext *cct,
+                                     boost::string_view key_id,
+                                     std::string& actual_key)
+{
+  std::string secret_engine = RGW_SSE_KMS_KMIP_SE_KV;
+#if 0
+  std::string secret_engine = cct->_conf->rgw_crypt_vault_secret_engine;
+  ldout(cct, 20) << "Vault authentication method: " << cct->_conf->rgw_crypt_vault_auth << dendl;
+  ldout(cct, 20) << "Vault Secrets Engine: " << secret_engine << dendl;
+#endif
+
+  if (RGW_SSE_KMS_KMIP_SE_KV == secret_engine){
+    KmipSecretEngine engine(cct);
+    return engine.get_key(key_id, actual_key);
+  }
+  else{
+    ldout(cct, 0) << "Missing or invalid secret engine" << dendl;
+    return -EINVAL;
+  }
+}
+
+
 int get_actual_key_from_kms(CephContext *cct,
                             boost::string_view key_id,
                             boost::string_view key_selector,
@@ -399,6 +538,9 @@ int get_actual_key_from_kms(CephContext *cct,
 
   if (RGW_SSE_KMS_BACKEND_VAULT == kms_backend)
     return get_actual_key_from_vault(cct, key_id, actual_key);
+
+  if (RGW_SSE_KMS_BACKEND_KMIP == kms_backend)
+    return get_actual_key_from_kmip(cct, key_id, actual_key);
 
   if (RGW_SSE_KMS_BACKEND_TESTING == kms_backend)
     return get_actual_key_from_conf(cct, key_id, key_selector, actual_key);
