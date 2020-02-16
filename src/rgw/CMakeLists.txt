@@ -152,6 +152,7 @@ set(librgw_common_srcs
   rgw_rest_iam.cc
   rgw_object_lock.cc
   rgw_kms.cc
+  rgw_kmip_client.cc
   rgw_url.cc
   rgw_oidc_provider
   rgw_datalog.cc
@@ -177,7 +178,16 @@ target_include_directories(rgw_common PRIVATE "${CMAKE_SOURCE_DIR}/src/lua/src")
 target_include_directories(rgw_common PRIVATE "${CMAKE_BINARY_DIR}/src/lua")
 
 
+set(librgw_kmip_srcs
+  rgw_kmip_client_impl.cc)
+
+add_library(rgw_kmip OBJECT ${librgw_kmip_srcs})
+
+target_include_directories(rgw_kmip PRIVATE "${CMAKE_SOURCE_DIR}/src/libkmip")
+
 target_include_directories(rgw_common PRIVATE
+  $<TARGET_PROPERTY:spawn,INTERFACE_INCLUDE_DIRECTORIES>)
+target_include_directories(rgw_kmip PRIVATE
   $<TARGET_PROPERTY:spawn,INTERFACE_INCLUDE_DIRECTORIES>)
 
 if(WITH_LTTNG)
@@ -296,6 +306,7 @@ target_link_libraries(rgw_schedulers
   PUBLIC dmclock::dmclock)
 
 add_library(radosgw SHARED ${radosgw_srcs} ${rgw_a_srcs} rgw_main.cc
+  $<TARGET_OBJECTS:rgw_kmip>
   $<TARGET_OBJECTS:civetweb_common_objs>)
 
 add_dependencies(radosgw civetweb_h)
@@ -305,7 +316,7 @@ target_include_directories(radosgw PUBLIC "${CMAKE_SOURCE_DIR}/src/dmclock/suppo
 target_include_directories(radosgw SYSTEM PUBLIC "../rapidjson/include")
 
 target_link_libraries(radosgw
-  PRIVATE ${rgw_libs} rgw_schedulers
+  PRIVATE ${rgw_libs} rgw_schedulers kmip
   PUBLIC dmclock::dmclock
 )
 if(WITH_RADOSGW_BEAST_FRONTEND)
