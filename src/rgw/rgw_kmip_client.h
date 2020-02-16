@@ -21,7 +21,17 @@ public:
 	string key_name;
 	char *name = 0;
 	char *unique_id = 0;
-	char *out;
+	// output - must free
+	char *out;		// unique_id, several
+	struct {		// unique_ids, locate
+		char **strings;
+		int string_count;
+	} outlist[1] = {{0, 0}};
+	struct {		// key, get
+		unsigned char *data;
+		int keylen;
+	} outkey[1] = {0, 0};
+	// end must free
 	int ret;
 	bool done;
 	ceph::mutex lock = ceph::make_mutex("rgw_kmip_req::lock");
@@ -38,6 +48,7 @@ public:
 		ret(-1),
 		done(false)
 	{}
+	~RGWKMIPTransceiver();
 
 	int send();
 	int process(optional_yield y);
@@ -49,10 +60,10 @@ protected:
 	bool is_started = false;
 	RGWKMIPManager(CephContext *cct) : cct(cct) {};
 public:
-	virtual ~RGWKMIPManager() = 0;
-	virtual int start();
-	virtual void stop();
-	virtual int add_request(RGWKMIPTransceiver*);
+	virtual ~RGWKMIPManager() { };
+	virtual int start() = 0;
+	virtual void stop() = 0;
+	virtual int add_request(RGWKMIPTransceiver*) = 0;
 };
 
 void rgw_kmip_client_init(RGWKMIPManager &);

@@ -14,9 +14,11 @@
 
 #include <openssl/err.h>
 #include <openssl/ssl.h>
+extern "C" {
 #include "kmip.h"
 #include "kmip_bio.h"
 #include "kmip_memset.h"
+};
 
 #define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw
@@ -442,7 +444,7 @@ RGWKmipHandles::do_one_entry(RGWKMIPTransceiver &element)
 		break;
 	}
 	if (element.name) {
-		memset(nvalue, 0, sizeof *nvalue); 
+		memset(nvalue, 0, sizeof *nvalue);
 		nvalue->value = element.name;
 		nvalue->size = strlen(element.name);
 		memset(nattr, 0, sizeof *nattr);
@@ -585,11 +587,59 @@ RGWKmipHandles::do_one_entry(RGWKMIPTransceiver &element)
 			memcpy(element.out, pld->unique_identifier->value, pld->unique_identifier->size);
 			element.out[pld->unique_identifier->size] = 0;
 		} break;
-	case KMIP_OP_LOCATE:
-	case KMIP_OP_GET:
-	case KMIP_OP_GET_ATTRIBUTES:
-	case KMIP_OP_GET_ATTRIBUTE_LIST:
-	case KMIP_OP_DESTROY:
+	case KMIP_OP_LOCATE: {
+			LocateResponsePayload *pld = (LocateResponsePayload *)req->response_payload;
+			char **list = static_cast<char **>(malloc(sizeof (char*) * (1 + pld->unique_identifiers_count)));
+			for (i = 0; i < pld->unique_identifiers_count; ++i) {
+				list[i] = static_cast<char *>(malloc(pld->unique_identifiers[i].size+1));
+				memcpy(list[i], pld->unique_identifiers[i].value, pld->unique_identifiers[i].size);
+				list[i][pld->unique_identifiers[i].size] = 0;
+			}
+			list[i] = 0;
+			element.outlist->strings = list;
+			element.outlist->string_count = pld->unique_identifiers_count;
+		} break;
+	case KMIP_OP_GET: {
+			GetResponsePayload *pld = (GetResponsePayload *)req->response_payload;
+			element.out = static_cast<char *>(malloc(pld->unique_identifier->size+1));
+			memcpy(element.out, pld->unique_identifier->value, pld->unique_identifier->size);
+			element.out[pld->unique_identifier->size] = 0;
+			if (pld->object_type != KMIP_OBJTYPE_SYMMETRIC_KEY) {
+				lderr(cct) << "get: expected symmetric key got " << pld->object_type << dendl;
+				element.ret = -EINVAL;
+				goto Done;
+			}
+			KeyBlock *kp = static_cast<SymmetricKey *>(pld->object)->key_block;
+			ByteString *bp;
+			if (kp->key_format_type != KMIP_KEYFORMAT_RAW) {
+				lderr(cct) << "get: expected raw key fromat got  " << kp->key_format_type << dendl;
+				element.ret = -EINVAL;
+				goto Done;
+			}
+			KeyValue *kv = static_cast<KeyValue *>(kp->key_value);
+			bp  = static_cast<ByteString*>(kv->key_material);
+			element.outkey->data = static_cast<unsigned char *>(malloc(bp->size));
+			element.outkey->keylen = bp->size;
+			memcpy(element.outkey->data, bp->value, bp->size);
+		} break;
+	case KMIP_OP_GET_ATTRIBUTES: {
+			GetAttributesResponsePayload *pld = (GetAttributesResponsePayload *)req->response_payload;
+			element.out = static_cast<char *>(malloc(pld->unique_identifier->size+1));
+			memcpy(element.out, pld->unique_identifier->value, pld->unique_identifier->size);
+			element.out[pld->unique_identifier->size] = 0;
+		} break;
+	case KMIP_OP_GET_ATTRIBUTE_LIST: {
+			GetAttributeListResponsePayload *pld = (GetAttributeListResponsePayload *)req->response_payload;
+			element.out = static_cast<char *>(malloc(pld->unique_identifier->size+1));
+			memcpy(element.out, pld->unique_identifier->value, pld->unique_identifier->size);
+			element.out[pld->unique_identifier->size] = 0;
+		} break;
+	case KMIP_OP_DESTROY: {
+			DestroyResponsePayload *pld = (DestroyResponsePayload *)req->response_payload;
+			element.out = static_cast<char *>(malloc(pld->unique_identifier->size+1));
+			memcpy(element.out, pld->unique_identifier->value, pld->unique_identifier->size);
+			element.out[pld->unique_identifier->size] = 0;
+		} break;
 	default:
 		lderr(cct) << "Missing response logic op=" << element.operation << dendl;
 		element.ret = -EINVAL;

@@ -41,10 +41,30 @@ RGWKMIPTransceiver::process(optional_yield y)
 	return wait(y);
 }
 
-void
-rgw_kmip_client_init(RGWKMIPManager *m)
+RGWKMIPTransceiver::~RGWKMIPTransceiver()
 {
-	rgw_kmip_manager = m;
+	int i;
+	if (out)
+		free(out);
+	out = 0;
+	if (outlist->strings) {
+		for (i = 0; i < outlist->string_count; ++i) {
+			free(outlist->strings[i]);
+		}
+		free(outlist->strings);
+		outlist->strings = 0;
+	}
+	if (outkey->data) {
+		::ceph::crypto::zeroize_for_security(outkey->data, outkey->keylen);
+		free(outkey->data);
+		outkey->data = 0;
+	}
+}
+
+void
+rgw_kmip_client_init(RGWKMIPManager &m)
+{
+	rgw_kmip_manager = &m;
 	rgw_kmip_manager->start();
 }
 
