@@ -251,6 +251,71 @@ public:
 
 };
 
+class KmipSecretEngine;
+class KmipGetTheKey {
+private:
+	CephContext *cct;
+	std::string work;
+	bool failed = false;
+	int ret;
+protected:
+	KmipGetTheKey(CephContext *cct) : cct(cct) {}
+	KmipGetTheKey& keyid_to_keyname(boost::string_view key_id);
+	KmipGetTheKey& get_uniqueid_for_keyname();
+	int get_key_for_uniqueid(std::string &);
+	friend KmipSecretEngine;
+};
+
+KmipGetTheKey&
+KmipGetTheKey::keyid_to_keyname(boost::string_view key_id)
+{
+	work = cct->_conf->rgw_crypt_kmip_kms_key_template;
+	std::string keyword = "$keyid";
+	std::string replacement = std::string(key_id);
+	size_t pos = 0;
+	if (work.length() == 0) {
+		work = std::move(replacement);
+	} else {
+		while (pos < work.length()) {
+			pos = work.find(keyword, pos);
+			if (pos == std::string::npos) break;
+			work.replace(pos, keyword.length(), replacement);
+			pos += key_id.length();
+		}
+	}
+	return *this;
+}
+
+KmipGetTheKey&
+KmipGetTheKey::get_uniqueid_for_keyname()
+{
+	RGWKMIPTransceiver secret_req(cct, RGWKMIPTransceiver::LOCATE);
+
+	secret_req.name = (char *) work.c_str();	// XXX ugh constness
+	ret = secret_req.process(null_yield);
+	if (ret < 0) {
+		failed = true;
+	} else {
+		work = std::string(secret_req.out);
+	}
+	return *this;
+}
+
+int
+KmipGetTheKey::get_key_for_uniqueid(std::string& actual_key)
+{
+	if (failed) return ret;
+	RGWKMIPTransceiver secret_req(cct, RGWKMIPTransceiver::GET);
+	secret_req.unique_id = (char *) work.c_str();	// XXX ugh constness.
+	ret = secret_req.process(null_yield);
+	if (ret < 0) {
+		failed = true;
+	} else {
+		actual_key = std::string((char*)(secret_req.outkey->data),
+			secret_req.outkey->keylen);
+	}
+	return ret;
+}
 
 class KmipSecretEngine: public SecretEngine {
 
@@ -259,69 +324,7 @@ protected:
 
   int send_request(boost::string_view key_id, JSONParser* parser) override
   {
-    int res;
-#if 0
-    bufferlist secret_bl;
-    string vault_token = "";
-    if (RGW_SSE_KMS_VAULT_AUTH_TOKEN == cct->_conf->rgw_crypt_kmip_auth){
-      ldout(cct, 0) << "Loading Kmip Token from filesystem" << dendl;
-      res = load_token_from_file(&vault_token);
-      if (res < 0){
-        return res;
-      }
-    }
-
-    std::string secret_url = cct->_conf->rgw_crypt_kmip_addr;
-    if (secret_url.empty()) {
-      ldout(cct, 0) << "ERROR: Kmip address not set in rgw_crypt_kmip_addr" << dendl;
-      return -EINVAL;
-    }
-
-    concat_url(secret_url, cct->_conf->rgw_crypt_kmip_prefix);
-    concat_url(secret_url, std::string(key_id));
-#endif
-
-    RGWKMIPTransceiver secret_req(cct, RGWKMIPTransceiver::GET, key_id);
-
-#if 0
-    if (!vault_token.empty()){
-      secret_req.append_header("X-Kmip-Token", vault_token);
-      vault_token.replace(0, vault_token.length(), vault_token.length(), '\000');
-    }
-
-    string kmip_key_template = cct->_conf->rgw_crypt_kmip_s3_key_template;
-    if (!kmip_key_template.empty()){
-      ldout(cct, 20) << "Kmip key template: " << kmip_key_template << dendl;
-      secret_req.append_header("X-Kmip-Namespace", kmip_key_template);
-    }
-#endif
-
-    res = secret_req.process(null_yield);
-    if (res < 0) {
-      ldout(cct, 0) << "ERROR: Request to Kmip failed with error " << res << dendl;
-      return res;
-    }
-#if 0
-
-    if (secret_req.get_http_status() ==
-        RGWHTTPTransceiver::HTTP_STATUS_UNAUTHORIZED) {
-      ldout(cct, 0) << "ERROR: Kmip request failed authorization" << dendl;
-      return -EACCES;
-    }
-
-    ldout(cct, 20) << "Request to Kmip returned " << res << " and HTTP status "
-      << secret_req.get_http_status() << dendl;
-
-    ldout(cct, 20) << "Parse response into JSON Object" << dendl;
-
-    if (!parser->parse(secret_bl.c_str(), secret_bl.length())) {
-      ldout(cct, 0) << "ERROR: Failed to parse JSON response from Kmip" << dendl;
-      return -EINVAL;
-    }
-    secret_bl.zero();
-#endif
-
-    return res;
+    return -EINVAL;
   }
 
   int decode_secret(JSONObj* json_obj, std::string& actual_key){
@@ -336,34 +339,12 @@ public:
 
   int get_key(boost::string_view key_id, std::string& actual_key)
   {
-    JSONParser parser;
-    string version;
-
-#if 0
-    if (get_key_version(key_id, version) < 0){
-      ldout(cct, 20) << "Missing or invalid key version" << dendl;
-      return -EINVAL;
-    }
-
-    int res = send_request(key_id, &parser);
-    if (res < 0) {
-      return res;
-    }
-
-    JSONObj* json_obj = &parser;
-    std::array<std::string, 3> elements = {"data", "keys", version};
-    for(const auto& elem : elements) {
-      json_obj = json_obj->find_obj(elem);
-      if (!json_obj) {
-        ldout(cct, 0) << "ERROR: Key not found in JSON response from Vault using Transit Engine" << dendl;
-        return -EINVAL;
-      }
-    }
-
-    return decode_secret(json_obj, actual_key);
-#else
-    return -EINVAL;
-#endif
+	int r;
+	r = KmipGetTheKey{cct}
+		.keyid_to_keyname(key_id)
+		.get_uniqueid_for_keyname()
+		.get_key_for_uniqueid(actual_key);
+	return r;
   }
 };
 

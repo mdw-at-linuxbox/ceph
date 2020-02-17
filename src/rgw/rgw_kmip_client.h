@@ -18,7 +18,6 @@ public:
 	};
 	CephContext *cct;
 	kmip_operation operation;
-	string key_name;
 	char *name = 0;
 	char *unique_id = 0;
 	// output - must free
@@ -39,12 +38,9 @@ public:
 
 	int wait(optional_yield y);
 	RGWKMIPTransceiver(CephContext * const cct,
-		kmip_operation operation,
-		const boost::string_view & key_name
-	)
+		kmip_operation operation)
 	: cct(cct),
 		operation(operation),
-		key_name(key_name),
 		ret(-1),
 		done(false)
 	{}
