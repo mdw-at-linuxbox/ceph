@@ -22,6 +22,9 @@ RGWKMIPTransceiver::wait(optional_yield y)
 	std::unique_lock l{lock};
 	if (!done)
 		cond.wait(l);
+	if (ret) {
+		lderr(cct) << "kmip process failed, " << ret << dendl;
+	}
 	return ret;
 }
 
@@ -29,6 +32,9 @@ int
 RGWKMIPTransceiver::send()
 {
 	int r = rgw_kmip_manager->add_request(this);
+	if (r < 0) {
+		lderr(cct) << "kmip send failed, " << r << dendl;
+	}
 	return r;
 }
 

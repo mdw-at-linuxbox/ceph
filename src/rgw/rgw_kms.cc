@@ -295,8 +295,19 @@ KmipGetTheKey::get_uniqueid_for_keyname()
 	ret = secret_req.process(null_yield);
 	if (ret < 0) {
 		failed = true;
+	} else if (!secret_req.outlist->string_count) {
+		ret = -ENOENT;
+		lderr(cct) << "error: locate returned no results for "
+			<< secret_req.name << dendl;
+		failed = true;
+	} else if (secret_req.outlist->string_count != 1) {
+		ret = -EINVAL;
+		lderr(cct) << "error: locate found "
+			<< secret_req.outlist->string_count
+			<< " results for " << secret_req.name << dendl;
+		failed = true;
 	} else {
-		work = std::string(secret_req.out);
+		work = std::string(secret_req.outlist->strings[0]);
 	}
 	return *this;
 }

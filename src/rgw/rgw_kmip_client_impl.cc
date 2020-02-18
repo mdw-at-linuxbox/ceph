@@ -50,6 +50,16 @@ struct RGWKmipHandle {
 	};
 };
 
+struct RGWKmipWorker: public Thread {
+	RGWKMIPManagerImpl &m;
+	RGWKmipWorker(RGWKMIPManagerImpl& m) : m(m) {}
+	void *entry() override;
+	void signal() {
+		std::lock_guard l{m.lock};
+		m.cond.notify_all();
+	}
+};
+
 static void
 kmip_free_handle_stuff(RGWKmipHandle *kmip)
 {
@@ -361,7 +371,7 @@ RGWKmipHandles::flush_kmip_handles()
 	stop();
 	join();
 	if (!saved_kmip.empty()) {
-		dout(0) << "ERROR: " << __func__ << " failed final cleanup" << dendl;
+		ldout(cct, 0) << "ERROR: " << __func__ << " failed final cleanup" << dendl;
 	}
 	saved_kmip.shrink_to_fit();
 }
@@ -369,6 +379,12 @@ RGWKmipHandles::flush_kmip_handles()
 int
 RGWKMIPManagerImpl::start()
 {
+	if (worker) {
+		lderr(cct) << "kmip worker already started" << dendl;
+		return -1;
+	}
+	worker = new RGWKmipWorker(*this);
+	worker->create("kmip worker");
 	return 0;
 }
 
@@ -377,7 +393,12 @@ RGWKMIPManagerImpl::stop()
 {
 	std::unique_lock l{lock};
 	going_down = true;
-	cond.notify_all();
+	if (worker) {
+		worker->signal();
+		worker->join();
+		delete worker;
+		worker = 0;
+	}
 }
 
 int
@@ -645,6 +666,7 @@ RGWKmipHandles::do_one_entry(RGWKMIPTransceiver &element)
 		element.ret = -EINVAL;
 		goto Done;
 	}
+	element.ret = 0;
 Done:
 	if (need_to_free_response)
 		kmip_free_response_message(h->kmip_ctx, resp_m);
@@ -655,32 +677,32 @@ Done:
 }
 
 void *
-RGWKMIPManagerImpl::entry()
+RGWKmipWorker::entry()
 {
-	std::unique_lock entry_lock{lock};
-	dout(10) << __func__ << " start" << dendl;
-	RGWKmipHandles handles{cct};
-	while (!going_down) {
-		if (requests.empty()) {
-			cond.wait_for(entry_lock, std::chrono::seconds(MAXIDLE));
+	std::unique_lock entry_lock{m.lock};
+	ldout(m.cct, 10) << __func__ << " start" << dendl;
+	RGWKmipHandles handles{m.cct};
+	while (!m.going_down) {
+		if (m.requests.empty()) {
+			m.cond.wait_for(entry_lock, std::chrono::seconds(MAXIDLE));
 			continue;
 		}
-		auto iter = requests.begin();
+		auto iter = m.requests.begin();
 		auto element = *iter;
-		requests.erase(iter);
+		m.requests.erase(iter);
 		entry_lock.unlock();
 		(void) handles.do_one_entry(element.details);
 		entry_lock.lock();
 	}
 	for (;;) {
-		if (requests.empty()) break;
-		auto iter = requests.begin();
+		if (m.requests.empty()) break;
+		auto iter = m.requests.begin();
 		auto element = std::move(*iter);
-		requests.erase(iter);
+		m.requests.erase(iter);
 		element.details.ret = -666;
 		element.details.done = true;
 		element.details.cond.notify_all();
 	}
-	dout(10) << __func__ << " finish" << dendl;
+	ldout(m.cct, 10) << __func__ << " finish" << dendl;
 	return nullptr;
 }

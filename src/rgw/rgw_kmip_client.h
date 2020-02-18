@@ -21,7 +21,7 @@ public:
 	char *name = 0;
 	char *unique_id = 0;
 	// output - must free
-	char *out;		// unique_id, several
+	char *out = 0;		// unique_id, several
 	struct {		// unique_ids, locate
 		char **strings;
 		int string_count;
@@ -41,7 +41,7 @@ public:
 		kmip_operation operation)
 	: cct(cct),
 		operation(operation),
-		ret(-1),
+		ret(-EDOM),
 		done(false)
 	{}
 	~RGWKMIPTransceiver();
