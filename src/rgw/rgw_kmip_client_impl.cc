@@ -261,6 +261,7 @@ struct RGWKmipHandles : public Thread {
 	ceph::mutex cleaner_lock = ceph::make_mutex("RGWKmipHandles::cleaner_lock");
 	std::vector<RGWKmipHandle*> saved_kmip;
 	int cleaner_shutdown;
+	bool cleaner_active = false;
 	ceph::condition_variable cleaner_cond;
 	RGWKmipHandles(CephContext *cct) :
 		cct(cct), cleaner_shutdown{0} {
@@ -271,6 +272,7 @@ struct RGWKmipHandles : public Thread {
 	void flush_kmip_handles();
 	int do_one_entry(RGWKMIPTransceiver &element);
 	void* entry();
+	void start();
 	void stop();
 };
 
@@ -358,11 +360,26 @@ RGWKmipHandles::entry()
 }
 
 void
-RGWKmipHandles::stop()
+RGWKmipHandles::start()
 {
 	std::lock_guard lock{cleaner_lock};
+	if (!cleaner_active) {
+		cleaner_active = true;
+		this->create("KMIPcleaner");	// len<16!!!
+	}
+}
+
+void
+RGWKmipHandles::stop()
+{
+	std::unique_lock lock{cleaner_lock};
 	cleaner_shutdown = 1;
 	cleaner_cond.notify_all();
+	if (cleaner_active) {
+		lock.unlock();
+		this->join();
+		cleaner_active = false;
+	}
 }
 
 void
@@ -391,7 +408,6 @@ RGWKMIPManagerImpl::start()
 void
 RGWKMIPManagerImpl::stop()
 {
-	std::unique_lock l{lock};
 	going_down = true;
 	if (worker) {
 		worker->signal();
@@ -408,6 +424,9 @@ RGWKMIPManagerImpl::add_request(RGWKMIPTransceiver *req)
 	if (going_down)
 		return -ECANCELED;
 	requests.push_back(*new Request{*req});
+	l.unlock();
+	if (worker)
+		worker->signal();
 	return 0;
 }
 
@@ -682,6 +701,7 @@ RGWKmipWorker::entry()
 	std::unique_lock entry_lock{m.lock};
 	ldout(m.cct, 10) << __func__ << " start" << dendl;
 	RGWKmipHandles handles{m.cct};
+	handles.start();
 	while (!m.going_down) {
 		if (m.requests.empty()) {
 			m.cond.wait_for(entry_lock, std::chrono::seconds(MAXIDLE));
@@ -703,6 +723,7 @@ RGWKmipWorker::entry()
 		element.details.done = true;
 		element.details.cond.notify_all();
 	}
+	handles.stop();
 	ldout(m.cct, 10) << __func__ << " finish" << dendl;
 	return nullptr;
 }
