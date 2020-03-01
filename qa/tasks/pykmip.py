@@ -8,6 +8,7 @@ import httplib
 import tempfile
 from urlparse import urlparse
 import json
+import os
 
 from teuthology import misc as teuthology
 from teuthology import contextutil
