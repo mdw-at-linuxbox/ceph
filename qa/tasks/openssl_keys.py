@@ -115,6 +115,8 @@ class OpenSSLKeys(Task):
 
         # if a ca certificate is provided, use it to sign the new certificate
         ca = config.get('ca', None)
+        log.info('Creating cert {} subj {} got ca {}'.format(name, subject, ca))
+        log.info('Existing certificates are {}'.format(",".join(self.ctx.ssl_certificates.keys())))
         if ca:
             # the ca certificate must have been created by a prior ssl task
             ca_cert = self.ctx.ssl_certificates.get(ca, None)
