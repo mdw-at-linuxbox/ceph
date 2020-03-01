@@ -192,8 +192,8 @@ database_path={confdir}/pykmip.sqlite
 def create_pykmip_conf(ctx, cclient, cconfig):
     log.info('#0 cclient={} cconfig={}'.format(pprint.pformat(cclient),pprint.pformat(cconfig)))
     (remote,) = ctx.cluster.only(cclient).remotes.keys()
-    pykmip_host, pykmip_port, pykmip_hostname = ctx.pykmip.endpoints[cclient]
-    log.info('#1 h,p,h {} {} {}'.format(pykmip_host, pykmip_port, pykmip_hostname))
+    pykmip_ipaddr, pykmip_port, pykmip_hostname = ctx.pykmip.endpoints[cclient]
+    log.info('#1 ip,p,h {} {} {}'.format(pykmip_ipaddr, pykmip_port, pykmip_hostname))
     clientca = cconfig.get('clientca', None)
     log.info('#2 clientca {}'.format(clientca))
     serverkey = None
@@ -304,8 +304,8 @@ def create_secrets(ctx, config):
 
     keystone_role = cconfig.get('use-keystone-role', None)
     keystone_host, keystone_port = ctx.keystone.public_endpoints[keystone_role]
-    pykmip_host, pykmip_port = ctx.pykmip.endpoints[cclient]
-    pykmip_url = 'http://{host}:{port}'.format(host=pykmip_host,
+    pykmip_ipaddr, pykmip_port, pykmip_hostname = ctx.pykmip.endpoints[cclient]
+    pykmip_url = 'http://{host}:{port}'.format(host=pykmip_hostname,
                                                  port=pykmip_port)
     log.info("pykmip_url=%s", pykmip_url)
     #fetching user_id of user that gets secrets for radosgw
@@ -383,7 +383,7 @@ def create_secrets(ctx, config):
                     "payload_content_encoding": "base64"
                 })
 
-            sec_req = httplib.HTTPConnection(pykmip_host, pykmip_port, timeout=30)
+            sec_req = httplib.HTTPConnection(pykmip_hostname, pykmip_port, timeout=30)
             try:
                 sec_req.request(
                     'POST',
