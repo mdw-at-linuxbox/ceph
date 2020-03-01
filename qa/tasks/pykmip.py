@@ -108,7 +108,7 @@ def install_packages(ctx, config):
         # use bindep to read which dependencies we need from temp/bindep.txt
         fd, local_temp_path = tempfile.mkstemp(suffix='.txt',
                                                prefix='bindep-')
-        fd.write(_bindep_txt)
+        os.write(fd, _bindep_txt)
         os.close(fd)
         fd, local_temp_path = tempfile.mkstemp(suffix='.txt',
                                                prefix='bindep-')
@@ -210,7 +210,7 @@ def create_pykmip_conf(ctx, cclient):
     )
     fd, local_temp_path = tempfile.mkstemp(suffix='.conf',
                                            prefix='pykmip')
-    fd.write(kmip_conf)
+    os.write(fd, kmip_conf)
     os.close(fd)
     remote.put_file(local_temp_path, get_pykmip_dir(ctx)+'/pykmip.conf')
     os.remove(local_temp_path)
