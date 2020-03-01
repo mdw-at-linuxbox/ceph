@@ -188,7 +188,8 @@ logging_level=DEBUG
 database_path={confdir}/pykmip.sqlite
 """
 
-def create_pykmip_conf(ctx, cclient):
+def create_pykmip_conf(ctx, cclient, cconfig):
+    (remote,) = ctx.cluster.only(cclient).remotes.keys()
     pykmip_host, pykmip_port, pykmip_hostname = ctx.pykmip.endpoints[cclient]
     clientca = cconfig.get('clientca', None)
     serverkey = None
@@ -227,8 +228,8 @@ def configure_pykmip(ctx, config):
     assert isinstance(config, dict)
     (cclient, cconfig) = config.items()[0]
 
-    copy_policy_json(ctx, cclient)
-    create_pykmip_conf(ctx, cclient)
+    copy_policy_json(ctx, cclient, cconfig)
+    create_pykmip_conf(ctx, cclient, cconfig)
     try:
         yield
     finally:
