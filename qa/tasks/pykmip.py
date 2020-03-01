@@ -217,7 +217,7 @@ def create_pykmip_conf(ctx, cclient, cconfig):
     kmip_conf = _pykmip_configuration.format(
         ipaddr=pykmip_ipaddr,
 	port=pykmip_port,
-	confdir=pykmip_dir,
+	confdir=pykmipdir,
 	hostname=pykmip_hostname,
 	clientca=clientca,
 	serverkey=serverkey,
@@ -227,7 +227,7 @@ def create_pykmip_conf(ctx, cclient, cconfig):
                                            prefix='pykmip')
     os.write(fd, kmip_conf)
     os.close(fd)
-    remote.put_file(local_temp_path, get_pykmip_dir(ctx)+'/pykmip.conf')
+    remote.put_file(local_temp_path, pykmipdir+'/pykmip.conf')
     os.remove(local_temp_path)
 
 @contextlib.contextmanager
