@@ -88,10 +88,10 @@ libopenssl-devel [platform:suse]
 libsqlite3-dev [platform:dpkg]
 sqlite-devel [platform:rpm]
 python-dev [platform:dpkg]
-python-devel [platform:rpm]
-python3-dev [platform:dpkg test]
-python3-devel [platform:fedora platform:suse test]
-python3 [platform:suse test]
+python-devel [(platform:redhat platform:base-py2)]
+python3-dev [platform:dpkg]
+python3-devel [(platform:redhat platform:base-py3) platform:suse]
+python3 [platform:suse]
 """
 
 @contextlib.contextmanager
