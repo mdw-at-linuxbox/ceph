@@ -10,6 +10,7 @@ from urlparse import urlparse
 import json
 import os
 from cStringIO import StringIO
+from teuthology.orchestra.remote import Remote
 
 from teuthology import misc as teuthology
 from teuthology import contextutil
@@ -25,17 +26,18 @@ log = logging.getLogger(__name__)
 def get_pykmip_dir(ctx):
     return '{tdir}/pykmip'.format(tdir=teuthology.get_testdir(ctx))
 
-def run_in_pykmip_dir(ctx, client, args):
-    ctx.cluster.only(client).run(
+def run_in_pykmip_dir(ctx, client, args, **kwargs):
+    (remote,) = [client] if isinstance(client,Remote) else ctx.cluster.only(client).remotes.keys()
+    return remote.run(
         args=['cd', get_pykmip_dir(ctx), run.Raw('&&'), ] + args,
+        **kwargs
     )
 
-def run_in_pykmip_venv(ctx, client, args):
-    run_in_pykmip_dir(ctx, client,
-                        ['.',
-                         '.pykmipenv/bin/activate',
+def run_in_pykmip_venv(ctx, client, args, **kwargs):
+    return run_in_pykmip_dir(ctx, client,
+        args = ['.', '.pykmipenv/bin/activate'.format(get_pykmip_dir(ctx)),
                          run.Raw('&&')
-                        ] + args)
+                        ] + args, **kwargs)
 
 @contextlib.contextmanager
 def download(ctx, config):
@@ -269,7 +271,7 @@ def run_pykmip(ctx, config):
         )
 
         # sleep driven synchronization
-        run_in_pykmip_venv(ctx, client, ['sleep', '15'])
+        run_in_pykmip_dir(ctx, client, ['sleep', '15'])
     try:
         yield
     finally:
@@ -382,7 +384,7 @@ def create_secrets(ctx, config):
                 )
             except:
                 log.info("catched exception!")
-                run_in_pykmip_venv(ctx, cclient, ['sleep', '900'])
+                run_in_pykmip_dir(ctx, cclient, ['sleep', '900'])
 
             pykmip_sec_resp = sec_req.getresponse()
             if not (pykmip_sec_resp.status >= 200 and
@@ -418,7 +420,7 @@ def create_secrets(ctx, config):
             key = {'id': secret_ref.split('secrets/')[1], 'payload': secret['base64']}
             ctx.pykmip.keys[secret['name']] = key
 
-    run_in_pykmip_venv(ctx, cclient, ['sleep', '3'])
+    run_in_pykmip_dir(ctx, cclient, ['sleep', '3'])
     try:
         yield
     finally:
@@ -485,8 +487,8 @@ def task(ctx, config):
     
     with contextutil.nested(
         lambda: download(ctx=ctx, config=config),
-        lambda: install_packages(ctx=ctx, config=config),
         lambda: setup_venv(ctx=ctx, config=config),
+        lambda: install_packages(ctx=ctx, config=config),
         lambda: configure_pykmip(ctx=ctx, config=config),
         lambda: run_pykmip(ctx=ctx, config=config),
         lambda: create_secrets(ctx=ctx, config=config),
