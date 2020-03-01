@@ -111,7 +111,7 @@ def install_packages(ctx, config):
                                                prefix='bindep-')
         os.write(fd, _bindep_txt)
         os.close(fd)
-        fd, local_temp_path = tempfile.mkstemp(suffix='.txt',
+        fd, remote_temp_path = tempfile.mkstemp(suffix='.txt',
                                                prefix='bindep-')
         os.close(fd)
         remote.put_file(local_temp_path, remote_temp_path)
