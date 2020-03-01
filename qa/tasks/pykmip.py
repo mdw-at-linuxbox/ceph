@@ -15,6 +15,7 @@ from teuthology.orchestra import run
 from teuthology.packaging import install_package
 from teuthology.packaging import remove_package
 from teuthology.exceptions import ConfigError
+from util import get_remote_for_role
 
 log = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ def assign_ports(ctx, config, initial_port):
         for role in roles_for_host:
             if role in config:
                 r = get_remote_for_role(ctx, roles_for_host)
-                role_endpoints[role] = r.ip_address, port
+                role_endpoints[role] = r.ip_address, port, r.hostname
                 port += 1
 
     return role_endpoints
@@ -184,15 +185,13 @@ database_path={confdir}/private/pykmip.sqlite
 """
 
 def create_pykmip_conf(ctx, cclient):
-    pykmip_host, pykmip_port = ctx.pykmip.endpoints[cclient]
-    pykmip_url = 'http://{host}:{port}'.format(host=pykmip_host,
-                                                 port=pykmip_port)
+    pykmip_host, pykmip_port, pykmip_hostname = ctx.pykmip.endpoints[cclient]
     pykmipdir = get_pykmip_dir(ctx)
     kmip_conf = _pykmip_configuration.format(
         ipaddr=pykmip_ipaddr,
 	port=pykmip_port,
 	confdir=pykmip_dir,
-	hostname="-host-name-here-"	# XXX
+	hostname=pykmip_hostname
     )
     fd, local_temp_path = tempfile.mkstemp(suffix='.conf',
                                            prefix='pykmip')
