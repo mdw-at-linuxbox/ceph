@@ -154,7 +154,7 @@ def assign_ports(ctx, config, initial_port):
     for remote, roles_for_host in ctx.cluster.remotes.items():
         for role in roles_for_host:
             if role in config:
-                r = get_remote_for_role(ctx, roles_for_host)
+                r = get_remote_for_role(ctx, role)
                 role_endpoints[role] = r.ip_address, port, r.hostname
                 port += 1
 
@@ -170,28 +170,43 @@ _pykmip_configuration = """# configuration for pykmip
 [server]
 hostname={ipaddr}
 port={port}
-certificate_path={confdir}/{hostname}.pem
-key_path={confdir}/private/{hostname}.key
-ca_path={confdir}/cacert.pem
+certificate_path={servercert}
+key_path={serverkey}
+ca_path={clientca}
 auth_suite=Basic
-policy_path={confdir}/policies
+policy_path={confdir}
 enable_tls_client_auth=True
 tls_cipher_suites=
     TLS_RSA_WITH_AES_128_CBC_SHA256
     TLS_RSA_WITH_AES_256_CBC_SHA256
     TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA384
 logging_level=DEBUG
-database_path={confdir}/private/pykmip.sqlite
+database_path={confdir}/pykmip.sqlite
 """
 
 def create_pykmip_conf(ctx, cclient):
     pykmip_host, pykmip_port, pykmip_hostname = ctx.pykmip.endpoints[cclient]
+    clientca = cconfig.get('clientca', None)
+    serverkey = None
+    servercert = cconfig.get('servercert', None)
+    servercert = ctx.ssl_certificates.get(servercert)
+    clientca = ctx.ssl_certificates.get(clientca)
+    if servercert != None:
+      serverkey = servercert.key
+      servercert = servercert.certificate
+    if clientca != None:
+      clientca = clientca.certificate
+    if servercert == None or clientca == None or serverkey == None:
+      raise ConfigError('pykmip: Missing/bad servercert or clientca')
     pykmipdir = get_pykmip_dir(ctx)
     kmip_conf = _pykmip_configuration.format(
         ipaddr=pykmip_ipaddr,
 	port=pykmip_port,
 	confdir=pykmip_dir,
 	hostname=pykmip_hostname
+	clientca=clientca,
+	serverkey=serverkey,
+	servercert=servercert
     )
     fd, local_temp_path = tempfile.mkstemp(suffix='.conf',
                                            prefix='pykmip')
