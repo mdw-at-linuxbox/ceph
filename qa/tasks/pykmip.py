@@ -9,6 +9,7 @@ import tempfile
 from urlparse import urlparse
 import json
 import os
+from cStringIO import StringIO
 
 from teuthology import misc as teuthology
 from teuthology import contextutil
