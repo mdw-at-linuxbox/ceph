@@ -247,7 +247,10 @@ def configure_pykmip(ctx, config):
 
 @contextlib.contextmanager
 def run_pykmip(ctx, config):
-    return
+    try:
+        yield
+    finally:
+        return
     assert isinstance(config, dict)
     log.info('Running pykmip...')
 
@@ -296,7 +299,10 @@ def create_secrets(ctx, config):
     """
     Create a main and an alternate s3 user.
     """
-    return
+    try:
+        yield
+    finally:
+        return
     assert isinstance(config, dict)
     (cclient, cconfig) = config.items()[0]
 
