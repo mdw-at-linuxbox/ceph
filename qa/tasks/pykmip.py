@@ -190,7 +190,7 @@ database_path={confdir}/pykmip.sqlite
 """
 
 def create_pykmip_conf(ctx, cclient, cconfig):
-    log.info('#0 cclient={} cconfig={}'.format(pprint.pformat(cclient),pprint.pformat(cconfig))
+    log.info('#0 cclient={} cconfig={}'.format(pprint.pformat(cclient),pprint.pformat(cconfig)))
     (remote,) = ctx.cluster.only(cclient).remotes.keys()
     pykmip_host, pykmip_port, pykmip_hostname = ctx.pykmip.endpoints[cclient]
     log.info('#1 h,p,h {} {} {}'.format(pykmip_host, pykmip_port, pykmip_hostname))
