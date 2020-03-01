@@ -203,7 +203,7 @@ def create_pykmip_conf(ctx, cclient):
         ipaddr=pykmip_ipaddr,
 	port=pykmip_port,
 	confdir=pykmip_dir,
-	hostname=pykmip_hostname
+	hostname=pykmip_hostname,
 	clientca=clientca,
 	serverkey=serverkey,
 	servercert=servercert
