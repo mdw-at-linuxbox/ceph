@@ -11,6 +11,7 @@ import json
 import os
 from cStringIO import StringIO
 from teuthology.orchestra.remote import Remote
+import pprint
 
 from teuthology import misc as teuthology
 from teuthology import contextutil
@@ -189,19 +190,28 @@ database_path={confdir}/pykmip.sqlite
 """
 
 def create_pykmip_conf(ctx, cclient, cconfig):
+    log.info('#0 cclient={} cconfig={}".format(pprint.pformat(cclient),pprint.pformat(cconfig))
     (remote,) = ctx.cluster.only(cclient).remotes.keys()
     pykmip_host, pykmip_port, pykmip_hostname = ctx.pykmip.endpoints[cclient]
+    log.info('#1 h,p,h {} {} {}".format(pykmip_host, pykmip_port, pykmip_hostname))
     clientca = cconfig.get('clientca', None)
+    log.info('#2 clientca {}".format(clientca))
     serverkey = None
     servercert = cconfig.get('servercert', None)
+    log.info('#3 servercert {}".format(servercert))
     servercert = ctx.ssl_certificates.get(servercert)
+    log.info('#4 servercert {}".format(servercert))
     clientca = ctx.ssl_certificates.get(clientca)
+    log.info('#5 clientca {}".format(clientca))
     if servercert != None:
       serverkey = servercert.key
       servercert = servercert.certificate
+      log.info('#6 serverkey {} servercert {}".format(serverkey, servercert))
     if clientca != None:
       clientca = clientca.certificate
+      log.info('#7 clientca {}".format(clientca))
     if servercert == None or clientca == None or serverkey == None:
+      log.info('#8 clientca {} serverkey {} servercert {}".format(clientca, serverkey, servercert))
       raise ConfigError('pykmip: Missing/bad servercert or clientca')
     pykmipdir = get_pykmip_dir(ctx)
     kmip_conf = _pykmip_configuration.format(
