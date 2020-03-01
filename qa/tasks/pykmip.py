@@ -116,8 +116,8 @@ def install_packages(ctx, config):
         os.close(fd)
         remote.put_file(local_temp_path, remote_temp_path)
         os.remove(local_temp_path)
-        run_in_tox_venv(ctx, remote, ['pip', 'install', 'bindep'])
-        r = run_in_tox_venv(ctx, remote,
+        run_in_pykmip_venv(ctx, remote, ['pip', 'install', 'bindep'])
+        r = run_in_pykmip_venv(ctx, remote,
                 ['bindep', '--brief', '--file', remote_temp_path],
                 stdout=StringIO(),
                 check_status=False) # returns 1 on success?
