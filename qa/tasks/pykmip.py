@@ -164,7 +164,7 @@ def assign_ports(ctx, config, initial_port):
 
     return role_endpoints
 
-def copy_policy_json(ctx, cclient):
+def copy_policy_json(ctx, cclient, cconfig):
     run_in_pykmip_dir(ctx, cclient,
                         ['cp',
                          get_pykmip_dir(ctx)+'/examples/policy.json',
