@@ -265,10 +265,9 @@ protected:
   const char *if_nomatch;
   uint32_t mod_zone_id;
   uint64_t mod_pg_ver;
-  off_t ofs;
+  list<ByteRangeElement> byte_range;
   uint64_t total_len;
   off_t start;
-  off_t end;
   ceph::real_time mod_time;
   ceph::real_time lastmod;
   ceph::real_time unmod_time;
@@ -311,9 +310,7 @@ public:
     mod_zone_id = 0;
     mod_pg_ver = 0;
     start = 0;
-    ofs = 0;
     total_len = 0;
-    end = -1;
     mod_ptr = NULL;
     unmod_ptr = NULL;
     get_data = false;

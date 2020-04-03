@@ -215,8 +215,12 @@ int RGWGetObj_ObjStore_S3::send_response_data(bufferlist& bl, off_t bl_ofs,
   if (op_ret)
     goto done;
 
-  if (range_str)
-    dump_range(s, start, end, s->obj_size);
+  if (range_str) {
+    if (byte_range.size() != 1) {
+      lderr(s->cct) << "ERROR: byte_range not size 1 not supported:" << byte_range.size() << dendl;
+    }
+    dump_range(s, byte_range.front().ofs, byte_range.front().end - 1, s->obj_size);
+  }
 
   if (s->system_request &&
       s->info.args.exists(RGW_SYS_PARAM_PREFIX "prepend-metadata")) {

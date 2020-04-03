@@ -1996,8 +1996,9 @@ public:
     RGWGetObj::range_parsed = true;
     RGWGetObj::get_data = true; // XXX
     RGWGetObj::partial_content = true;
-    RGWGetObj::ofs = off;
-    RGWGetObj::end = off + len;
+    RGWGetObj::byte_range.push_back(ByteRangeElement());
+    RGWGetObj::byte_range.back().ofs = off;
+    RGWGetObj::byte_range.back().end = off + len;
   }
 
   bool only_bucket() override { return false; }
@@ -2146,8 +2147,9 @@ public:
     RGWGetObj::range_parsed = true;
     RGWGetObj::get_data = false; // XXX
     RGWGetObj::partial_content = true;
-    RGWGetObj::ofs = 0;
-    RGWGetObj::end = UINT64_MAX;
+    RGWGetObj::byte_range.push_back(ByteRangeElement());
+    RGWGetObj::byte_range.back().ofs = 0;
+    RGWGetObj::byte_range.back().end = UINT64_MAX;
   }
 
   const char* name() const override { return "stat_obj"; }

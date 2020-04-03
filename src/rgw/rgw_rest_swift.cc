@@ -1529,7 +1529,7 @@ int RGWGetObj_ObjStore_SWIFT::send_response_data(bufferlist& bl,
   }
 
   if (range_str) {
-    dump_range(s, ofs, end, s->obj_size);
+    dump_range(s, byte_range.front().ofs, byte_range.front().end - 1, s->obj_size);
   }
 
   if (s->is_err()) {

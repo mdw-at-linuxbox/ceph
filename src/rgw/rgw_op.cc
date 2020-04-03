@@ -96,71 +96,130 @@ static MultipartMetaFilter mp_filter;
 // at some point
 static constexpr auto S3_EXISTING_OBJTAG = "s3:ExistingObjectTag";
 
-int RGWGetObj::parse_range(void)
+// next token for a byte range: [a-z0-9]+ or \S
+static std::string
+parse_range_getword(std::istream &ss)
+{
+  std::string r;
+  char c;
+  for (;;) {
+    ss >> c;
+    if (!ss) return r;
+    if (!isspace(c)) break;
+  }
+  for (;;) {
+    r.append(1, c);
+    if (!isalnum(c)) break;
+    ss >> c;
+    if (!ss) break;
+    if (!isalnum(c)) {
+      ss.unget();
+      break;
+    }
+  }
+  return r;
+}
+
+// case 1: 10-50
+//	ofs = 10
+//	end = 51
+// case 3: 50-		from byte 50 on
+//	ofs = 50
+//	end = -1
+// case 3: -50		LAST 50 bytes of object
+//	ofs = -50
+//	end = -1
+// invalid:
+//	-0		attempt to fetch 0 bytes
+
+static int
+parse_range(const char *range, std::list<ByteRangeElement> &rl)
 {
   int r = -ERANGE;
-  string rs(range_str);
+  string s(range);
   string ofs_str;
   string end_str;
+  char *eop;
+  std::stringstream ss{range};
+  std::string word;
+  ByteRangeElement *ep;
+  off_t first, last;
 
-  ignore_invalid_range = s->cct->_conf->rgw_ignore_get_invalid_range;
-  partial_content = false;
-
-  size_t pos = rs.find("bytes=");
-  if (pos == string::npos) {
-    pos = 0;
-    while (isspace(rs[pos]))
-      pos++;
-    int end = pos;
-    while (isalpha(rs[end]))
-      end++;
-    if (strncasecmp(rs.c_str(), "bytes", end - pos) != 0)
-      return 0;
-    while (isspace(rs[end]))
-      end++;
-    if (rs[end] != '=')
-      return 0;
-    rs = rs.substr(end + 1);
-  } else {
-    rs = rs.substr(pos + 6); /* size of("bytes=")  */
+  for (;;) {
+    if (!ss) break;
+    if (rl.empty()) {
+	word = parse_range_getword(ss);
+	if (word.empty()) break;
+	boost::algorithm::to_lower(word);
+	if (word != "bytes") {
+	    break;
+	}
+	word = parse_range_getword(ss);
+	if (word != "=") break;
+    }
+    ofs_str = parse_range_getword(ss);
+    if (ofs_str == "-")
+	ofs_str += parse_range_getword(ss);
+    end_str = "";
+    if (ofs_str.empty() || ofs_str[0] != '-') {
+	word = parse_range_getword(ss);
+	if (word == "-") {
+	    end_str = parse_range_getword(ss);
+	    if (end_str == "-")
+		end_str += parse_range_getword(ss);
+	}
+    }
+    last = -1;
+    if (!end_str.empty()) {
+	last = strtoll(end_str.c_str(), &eop, 10);
+	if (eop != end_str.c_str() + end_str.length()) {
+	    break;
+	}
+    }
+    if (!ofs_str.empty()) {
+	first = strtoll(ofs_str.c_str(), &eop, 10);
+	if (eop != ofs_str.c_str() + ofs_str.length()) {
+	    break;
+	}
+	if (last >= 0 && first > last) {
+	    break;
+	}
+	if (ofs_str[0] == '-' && !first) {
+	    break;	// -0 case.
+	}
+    }
+    rl.emplace_back();
+    ep = &rl.back();
+    if (last >= 0) ++last;
+    ep->end = last;
+    ep->ofs = first;
+    word = parse_range_getword(ss);
+    if (word != ",") {
+	if (word.empty()) {
+	    r = 0;
+	}
+	break;
+    }
   }
-  pos = rs.find('-');
-  if (pos == string::npos)
-    goto done;
-
-  partial_content = true;
-
-  ofs_str = rs.substr(0, pos);
-  end_str = rs.substr(pos + 1);
-  if (end_str.length()) {
-    end = atoll(end_str.c_str());
-    if (end < 0)
-      goto done;
-  }
-
-  if (ofs_str.length()) {
-    ofs = atoll(ofs_str.c_str());
-  } else { // RFC2616 suffix-byte-range-spec
-    ofs = -end;
-    end = -1;
-  }
-
-  if (end >= 0 && end < ofs)
-    goto done;
-
-  range_parsed = true;
-  return 0;
-
-done:
-  if (ignore_invalid_range) {
-    partial_content = false;
-    ofs = 0;
-    end = -1;
-    range_parsed = false; // allow retry
-    r = 0;
-  }
-
   return r;
+}
+
+int RGWGetObj::parse_range(void)
+{
+  int x;
+  bool ignore_invalid_range;
+
+  range_parsed = false;
+  ignore_invalid_range = s->cct->_conf->rgw_ignore_get_invalid_range;
+  x = ::parse_range(range_str, byte_range);
+  if (!x) {
+    range_parsed = true;
+  }
+  if (x && ignore_invalid_range) {
+    byte_range.clear();
+    x = 0;
+  }
+  return x;
 }
 
 static int decode_policy(CephContext *cct,
@@ -1692,8 +1751,7 @@ int RGWGetObj::read_user_manifest_part(rgw_bucket& bucket,
 
 static int iterate_user_manifest_parts(CephContext * const cct,
                                        rgw::sal::RGWRadosStore * const store,
-                                       const off_t ofs,
-                                       const off_t end,
+                                       const list<ByteRangeElement>& prefetch_list,
                                        RGWBucketInfo *pbucket_info,
                                        const string& obj_prefix,
                                        RGWAccessControlPolicy * const bucket_acl,
@@ -1717,6 +1775,7 @@ static int iterate_user_manifest_parts(CephContext * const cct,
   string delim;
   bool is_truncated;
   vector<rgw_bucket_dir_entry> objs;
+  off_t ofs, end;
 
   utime_t start_time = ceph_clock_now();
 
@@ -1727,6 +1786,14 @@ static int iterate_user_manifest_parts(CephContext * const cct,
   list_op.params.delim = delim;
 
   MD5 etag_sum;
+
+  if (prefetch_list.empty()) {
+    ofs = 0;
+    end = -1;
+  } else {	// XXX only handles one element for now.
+    ofs = prefetch_list.front().ofs;
+    end = prefetch_list.front().end - 1;
+  }
   do {
 #define MAX_LIST_OBJS 100
     int r = list_op.list_objects(MAX_LIST_OBJS, &objs, NULL, &is_truncated, null_yield);
@@ -1799,8 +1866,7 @@ struct rgw_slo_part {
 
 static int iterate_slo_parts(CephContext *cct,
                              rgw::sal::RGWRadosStore *store,
-                             off_t ofs,
-                             off_t end,
+                             list<ByteRangeElement> byterange_wanted,
                              map<uint64_t, rgw_slo_part>& slo_parts,
                              int (*cb)(rgw_bucket& bucket,
                                        const rgw_bucket_dir_entry& ent,
@@ -1813,6 +1879,14 @@ static int iterate_slo_parts(CephContext *cct,
                              void *cb_param)
 {
   bool found_start = false, found_end = false;
+  off_t ofs, end;
+
+  if (byterange_wanted.size() != 1) {
+    lderr(cct) << "iterate_slow_parts: byterange logic problem" << dendl;
+    return -EINVAL;
+  }
+  ofs = byterange_wanted.front().ofs;
+  end = byterange_wanted.front().end - 1;
 
   if (slo_parts.empty()) {
     return 0;
@@ -1947,7 +2021,7 @@ int RGWGetObj::handle_user_manifest(const char *prefix)
    * - total length (of the parts we are going to send to client),
    * - overall DLO's content size,
    * - md5 sum of overall DLO's content (for etag of Swift API). */
-  int r = iterate_user_manifest_parts(s->cct, store, ofs, end,
+  int r = iterate_user_manifest_parts(s->cct, store, byte_range,
         pbucket_info, obj_prefix, bucket_acl, *bucket_policy,
         nullptr, &s->obj_size, &lo_etag,
         nullptr /* cb */, nullptr /* cb arg */);
@@ -1955,12 +2029,12 @@ int RGWGetObj::handle_user_manifest(const char *prefix)
     return r;
   }
 
-  r = RGWRados::Object::Read::range_to_ofs(s->obj_size, ofs, end);
+  r = RGWRados::Object::Read::range_to_ofs(s->obj_size, byte_range);
   if (r < 0) {
     return r;
   }
 
-  r = iterate_user_manifest_parts(s->cct, store, ofs, end,
+  r = iterate_user_manifest_parts(s->cct, store, byte_range,
         pbucket_info, obj_prefix, bucket_acl, *bucket_policy,
         &total_len, nullptr, nullptr,
         nullptr, nullptr);
@@ -1974,7 +2048,7 @@ int RGWGetObj::handle_user_manifest(const char *prefix)
     return 0;
   }
 
-  r = iterate_user_manifest_parts(s->cct, store, ofs, end,
+  r = iterate_user_manifest_parts(s->cct, store, byte_range,
         pbucket_info, obj_prefix, bucket_acl, *bucket_policy,
         nullptr, nullptr, nullptr,
         get_obj_user_manifest_iterate_cb, (void *)this);
@@ -2105,18 +2179,20 @@ int RGWGetObj::handle_slo_manifest(bufferlist& bl)
   s->obj_size = slo_info.total_size;
   ldpp_dout(this, 20) << "s->obj_size=" << s->obj_size << dendl;
 
-  int r = RGWRados::Object::Read::range_to_ofs(total_len, ofs, end);
+  int r = RGWRados::Object::Read::range_to_ofs(total_len, byte_range);
   if (r < 0) {
     return r;
   }
 
-  total_len = end - ofs + 1;
-  ldpp_dout(this, 20) << "Requested: ofs=" << ofs
-                    << " end=" << end
+  total_len = 0;
+  for (auto &e: byte_range) {
+    total_len += e.end - e.ofs;
+  }
+  ldpp_dout(this, 20) << "Requested: range=" << byte_range
                     << " total=" << total_len
                     << dendl;
 
-  r = iterate_slo_parts(s->cct, store, ofs, end, slo_parts,
+  r = iterate_slo_parts(s->cct, store, byte_range, slo_parts,
         get_obj_user_manifest_iterate_cb, (void *)this);
   if (r < 0) {
     return r;
@@ -2150,8 +2226,11 @@ bool RGWGetObj::prefetch_data()
   range_str = s->info.env->get("HTTP_RANGE");
 
   if (range_str) {
-    parse_range();
-    return false;
+    int x = parse_range();
+    /* error on parsing the range, stop prefetch and will fail in execute() */
+    if (x < 0) {
+      return false; /* range_parsed==false */
+    }
   }
 
   return get_data;
@@ -2315,10 +2394,14 @@ void RGWGetObj::execute()
     goto done_err;
   }
 
-  op_ret = read_op.range_to_ofs(s->obj_size, ofs, end);
+  op_ret = read_op.range_to_ofs(s->obj_size, byte_range);
   if (op_ret < 0)
     goto done_err;
-  total_len = (ofs <= end ? end + 1 - ofs : 0);
+  total_len = 0;
+  for (auto &e: byte_range) {
+    if (e.end > e.ofs)
+      total_len += e.end - e.ofs;
+  }
 
   /* Check whether the object has expired. Swift API documentation
    * stands that we should return 404 Not Found in such case. */
@@ -2330,7 +2413,11 @@ void RGWGetObj::execute()
   /* Decode S3 objtags, if any */
   rgw_cond_decode_objtags(s, attrs);
 
-  start = ofs;
+  if (byte_range.empty()) {
+    op_ret = -EINVAL;
+    goto done_err;
+  }
+  start = byte_range.front().ofs;
 
   attr_iter = attrs.find(RGW_ATTR_MANIFEST);
   op_ret = this->get_decrypt_filter(&decrypt, filter,
@@ -2342,15 +2429,15 @@ void RGWGetObj::execute()
     goto done_err;
   }
 
-  if (!get_data || ofs > end) {
+  if (!get_data || byte_range.front().ofs >= byte_range.back().end) {
     send_response_data(bl, 0, 0);
     return;
   }
 
-  perfcounter->inc(l_rgw_get_b, end - ofs);
+  perfcounter->inc(l_rgw_get_b, byte_range.back().end - byte_range.front().ofs);
 
-  ofs_x = ofs;
-  end_x = end;
+  ofs_x = byte_range.front().ofs;
+  end_x = byte_range.back().end - 1;
   filter->fixup_range(ofs_x, end_x);
   op_ret = read_op.iterate(ofs_x, end_x, filter, s->yield);
 

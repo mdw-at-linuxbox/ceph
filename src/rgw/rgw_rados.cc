@@ -208,15 +208,23 @@ RGWObjState::RGWObjState(const RGWObjState& rhs) : obj (rhs.obj) {
   fake_tag = rhs.fake_tag;
   manifest = rhs.manifest;
   shadow_obj = rhs.shadow_obj;
-  has_data = rhs.has_data;
-  if (rhs.data.length()) {
-    data = rhs.data;
-  }
-  prefetch_data = rhs.prefetch_data;
+  data_list = rhs.data_list;
+  prefetch_list = rhs.prefetch_list;
   keep_tail = rhs.keep_tail;
   is_olh = rhs.is_olh;
   objv_tracker = rhs.objv_tracker;
   pg_ver = rhs.pg_ver;
+}
+
+void
+RGWObjState::set_prefetch_all()
+{
+  if (prefetch_list.empty()) {
+    prefetch_list.push_back(ByteRangeElement());
+    ByteRangeElement & e{ prefetch_list.front() };
+    e.ofs = 0;
+    e.end = -1;
+  }
 }
 
 RGWObjState *RGWObjectCtx::get_state(const rgw_obj& obj) {
@@ -245,7 +253,7 @@ void RGWObjectCtx::set_atomic(rgw_obj& obj) {
 void RGWObjectCtx::set_prefetch_data(const rgw_obj& obj) {
   std::unique_lock wl{lock};
   assert (!obj.empty());
-  objs_state[obj].prefetch_data = true;
+  objs_state[obj].set_prefetch_all();
 }
 
 void RGWObjectCtx::invalidate(const rgw_obj& obj) {
@@ -255,14 +263,17 @@ void RGWObjectCtx::invalidate(const rgw_obj& obj) {
     return;
   }
   bool is_atomic = iter->second.is_atomic;
-  bool prefetch_data = iter->second.prefetch_data;
+  bool prefetch_data = !iter->second.prefetch_list.empty();
 
   objs_state.erase(iter);
 
   if (is_atomic || prefetch_data) {
     auto& state = objs_state[obj];
     state.is_atomic = is_atomic;
-    state.prefetch_data = prefetch_data;
+    state.prefetch_list.clear();
+    if (prefetch_data) {
+      state.set_prefetch_all();
+    }
   }
 }
 
@@ -5190,6 +5201,61 @@ int RGWRados::get_olh_target_state(RGWObjectCtx& obj_ctx, const RGWBucketInfo& b
   return 0;
 }
 
+std::ostream & operator<<(std::ostream& out, const ByteRangeElement& e) {
+  out << e.ofs << '-' << e.end;
+  return out;
+}
+
+std::ostream & operator<<(std::ostream& out, const std::list<ByteRangeElement>& rl) {
+  char sep = '[';
+  for (auto &e: rl) {
+    out << sep << e;
+    sep = ',';
+  }
+  if (sep != ',') {
+    out << sep;
+  }
+  out << ']';
+  return out;
+}
+
+static bool
+byterange_compare(const ByteRangeElement &a, const ByteRangeElement &b)
+{
+	return (uint64_t) a.ofs < (uint64_t) b.ofs;
+}
+
+std::list<ByteRangeElement>&
+byterange_canonicalize(std::list<ByteRangeElement> &rl, int slop)
+{
+    std::list<ByteRangeElement>::iterator ep;
+    bool zapit = false;
+    ByteRangeElement *prev = 0;
+    rl.sort(byterange_compare);
+    for (ep = rl.begin(); ep != rl.end(); ++ep) {
+	if (zapit) {
+	    rl.erase(std::prev(ep));
+	}
+	zapit = 0;
+	if (!prev) {
+	} else if ((prev->end < 0) != (ep->end < 0)) {
+	} else if (prev->end >= ep->end) {
+	    zapit = 1;
+	    continue;
+	}
+	else if (slop < 0 || prev->end >= ep->ofs - slop) {
+	    prev->end = ep->end;
+	    zapit = 1;
+	    continue;
+	}
+	prev = &*ep;
+    }
+    if (zapit) {
+	rl.pop_back();
+    }
+    return rl;
+}
+
 int RGWRados::get_obj_state_impl(RGWObjectCtx *rctx, const RGWBucketInfo& bucket_info, const rgw_obj& obj,
                                  RGWObjState **state, bool follow_olh, optional_yield y, bool assume_noent)
 {
@@ -5200,7 +5266,7 @@ int RGWRados::get_obj_state_impl(RGWObjectCtx *rctx, const RGWBucketInfo& bucket
   bool need_follow_olh = follow_olh && obj.key.instance.empty();
 
   RGWObjState *s = rctx->get_state(obj);
-  ldout(cct, 20) << "get_obj_state: rctx=" << (void *)rctx << " obj=" << obj << " state=" << (void *)s << " s->prefetch_data=" << s->prefetch_data << dendl;
+  ldout(cct, 20) << "get_obj_state: rctx=" << (void *)rctx << " obj=" << obj << " state=" << (void *)s << " s->prefetch_data=" << !s->prefetch_list.empty()<< dendl;
   *state = s;
   if (s->has_attrs) {
     if (s->is_olh && need_follow_olh) {
@@ -5216,8 +5282,20 @@ int RGWRados::get_obj_state_impl(RGWObjectCtx *rctx, const RGWBucketInfo& bucket
 
   int r = -ENOENT;
 
+  if (!s->prefetch_list.empty()) {
+    byterange_canonicalize(s->prefetch_list, -1);
+    /* all ranges collesced into one or two groups,
+     *	>1 elements means fetches relative to start and end of file.
+     * [0].first < 0 means only fetch relative to end of file.
+     * otherwise, ok to fetch...
+     */
+    if (s->prefetch_list.size() > 1 || s->prefetch_list.front().ofs < 0) {
+      s->prefetch_list.clear();
+    }
+  }
+
   if (!assume_noent) {
-    r = RGWRados::raw_obj_stat(raw_obj, &s->size, &s->mtime, &s->epoch, &s->attrset, (s->prefetch_data ? &s->data : NULL), NULL, y);
+    r = RGWRados::raw_obj_stat(raw_obj, &s->size, &s->mtime, &s->epoch, &s->attrset, s->prefetch_list, s->data_list, NULL, y);
   }
 
   if (r == -ENOENT) {
@@ -5892,6 +5970,37 @@ int RGWRados::Object::Read::range_to_ofs(uint64_t obj_size, int64_t &ofs, int64_
   return 0;
 }
 
+int RGWRados::Object::Read::range_to_ofs(uint64_t obj_size,
+    list<ByteRangeElement>&byterange)
+{
+  if (byterange.empty()) {
+    byterange.push_back(ByteRangeElement());
+    ByteRangeElement & e{ byterange.front() };
+    e.ofs = 0;
+    e.end = -1;
+  }
+  for (auto &e: byterange) {
+    if (e.ofs < 0) {
+      e.ofs += obj_size;
+      if (e.ofs < 0)
+	e.ofs = 0;
+      e.end = obj_size;
+    } else if (e.end < 0) {
+      e.end = obj_size;
+    }
+    if (obj_size > 0) {
+      if (e.ofs >= (off_t) obj_size) {
+	return -ERANGE;
+      }
+    }
+    if (e.end > (off_t) obj_size) {
+      e.end = obj_size;
+    }
+  }
+  byterange_canonicalize(byterange, 80);
+  return 0;
+}
+
 int RGWRados::Bucket::UpdateIndex::guard_reshard(BucketShard **pbs, std::function<int(BucketShard *)> call)
 {
   RGWRados *store = target->get_store();
@@ -6135,22 +6244,31 @@ int RGWRados::Object::Read::read(int64_t ofs, int64_t end, bufferlist& bl, optio
     if (r < 0)
       return r;
 
-    if (astate && astate->prefetch_data) {
-      if (!ofs && astate->data.length() >= len) {
-        bl = astate->data;
-        return bl.length();
-      }
-
-      if (ofs < astate->data.length()) {
-        unsigned copy_len = std::min((uint64_t)astate->data.length() - ofs, len);
-        astate->data.begin(ofs).copy(copy_len, bl);
-        read_len -= copy_len;
-        read_ofs += copy_len;
-        if (!read_len)
+    if (!astate) {
+    } else if (astate->data_list.empty()) {
+    } else {
+      for (auto& dl : astate->data_list) {
+        if (dl.ofs == ofs && dl.data.length() >= len) {
+	  bl = dl.data;
+          return bl.length();
+        }
+	if (ofs < dl.ofs + dl.data.length()
+	    && ofs+len > static_cast<uint64_t>(dl.ofs)) {
+	  if (ofs < dl.ofs) {
+lderr(cct) << "PROBLEM: prefetch read miss: ofs=" << ofs << " len=" << len << " dl.ofs=" << dl.ofs << " dl.len=" << dl.data.length() << dendl;
+	    break;
+	  }
+	}
+	unsigned copy_len = dl.ofs + dl.data.length() - ofs;
+	if (copy_len > len) copy_len = len;
+	dl.data.begin(ofs - dl.ofs).copy(copy_len, bl);
+	read_len -= copy_len;
+	read_ofs += copy_len;
+	if (!read_len)
 	  return bl.length();
-
-        merge_bl = true;
-        pbl = &read_bl;
+	merge_bl = true;
+	pbl = &read_bl;
+	break;
       }
     }
   }
@@ -6267,20 +6385,24 @@ int RGWRados::get_obj_iterate_cb(const rgw_raw_obj& read_obj, off_t obj_ofs,
     if (r < 0)
       return r;
 
-    if (astate &&
-        obj_ofs < astate->data.length()) {
-      unsigned chunk_len = std::min((uint64_t)astate->data.length() - obj_ofs, (uint64_t)len);
+    if (!astate) {
+    } else if (astate->data_list.empty()) {
+    } else {
+      for (auto& dl : astate->data_list) {
+        if (obj_ofs < dl.ofs + dl.data.length()
+	    && obj_ofs+len > dl.ofs) {
+	  unsigned chunk_len = dl.ofs + dl.data.length() - obj_ofs;
+	  if (chunk_len > len) chunk_len = len;
+	  r = d->client_cb->handle_data(dl.data, obj_ofs - dl.ofs, chunk_len);
 
-      r = d->client_cb->handle_data(astate->data, obj_ofs, chunk_len);
-      if (r < 0)
-        return r;
-
-      len -= chunk_len;
-      d->offset += chunk_len;
-      read_ofs += chunk_len;
-      obj_ofs += chunk_len;
-      if (!len)
-	  return 0;
+	  len -= chunk_len;
+	  d->offset += chunk_len;
+	  read_ofs += chunk_len;
+	  obj_ofs += chunk_len;
+	  if (!len)
+	      return 0;
+        }
+      }
     }
   }
 
@@ -7402,7 +7524,9 @@ int RGWRados::follow_olh(const RGWBucketInfo& bucket_info, RGWObjectCtx& obj_ctx
 }
 
 int RGWRados::raw_obj_stat(rgw_raw_obj& obj, uint64_t *psize, real_time *pmtime, uint64_t *epoch,
-                           map<string, bufferlist> *attrs, bufferlist *first_chunk,
+                           map<string, bufferlist> *attrs,
+                           list<ByteRangeElement>& prefetch_data,
+                           list<DataElement>& data_list,
                            RGWObjVersionTracker *objv_tracker, optional_yield y)
 {
   rgw_rados_ref ref;
@@ -7425,8 +7549,16 @@ int RGWRados::raw_obj_stat(rgw_raw_obj& obj, uint64_t *psize, real_time *pmtime,
   if (psize || pmtime) {
     op.stat2(&size, &mtime_ts, NULL);
   }
-  if (first_chunk) {
-    op.read(0, cct->_conf->rgw_max_chunk_size, first_chunk, NULL);
+  data_list.clear();
+  for (auto& prefetch : prefetch_data) {
+    if (prefetch.ofs < 0 || prefetch.ofs >= cct->_conf->rgw_max_chunk_size) {
+      continue;
+    }
+    auto end = min(prefetch.end, cct->_conf->rgw_max_chunk_size);
+    data_list.push_back(DataElement());
+    DataElement& next_chunk{data_list.back()};
+    next_chunk.ofs = prefetch.ofs;
+    op.read(prefetch.ofs, end, &next_chunk.data, NULL);
   }
   bufferlist outbl;
   r = rgw_rados_operate(ref.pool.ioctx(), ref.obj.oid, &op, &outbl, null_yield);
@@ -7447,6 +7579,19 @@ int RGWRados::raw_obj_stat(rgw_raw_obj& obj, uint64_t *psize, real_time *pmtime,
   }
 
   return 0;
+}
+
+int RGWRados::raw_obj_stat(rgw_raw_obj& obj, uint64_t *psize, real_time *pmtime,
+                           uint64_t *epoch,
+                           map<string, bufferlist> *attrs,
+                           RGWObjVersionTracker *objv_tracker, optional_yield y)
+{
+    list<ByteRangeElement> prefetch_data;	// length = 0,
+    list<DataElement> data_list;		//  so no returned data.
+
+    return raw_obj_stat(obj, psize, pmtime, epoch, attrs,
+			prefetch_data, data_list,
+			objv_tracker, y);
 }
 
 int RGWRados::get_bucket_stats(RGWBucketInfo& bucket_info, int shard_id, string *bucket_ver, string *master_ver,

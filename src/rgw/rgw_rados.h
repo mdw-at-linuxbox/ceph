@@ -158,6 +158,18 @@ struct RGWCloneRangeInfo {
   uint64_t len;
 };
 
+struct ByteRangeElement {
+  int64_t ofs;
+  int64_t end;
+};
+
+struct DataElement {
+  int64_t ofs;
+  bufferlist data;
+};
+std::ostream & operator<<(std::ostream& out, const ByteRangeElement&);
+std::ostream & operator<<(std::ostream& out, const std::list<ByteRangeElement>&);
+
 struct RGWObjState {
   rgw_obj obj;
   bool is_atomic{false};
@@ -173,9 +185,8 @@ struct RGWObjState {
   bool fake_tag{false};
   std::optional<RGWObjManifest> manifest;
   string shadow_obj;
-  bool has_data{false};
-  bufferlist data;
-  bool prefetch_data{false};
+  list<DataElement> data_list;
+  list<ByteRangeElement> prefetch_list;
   bool keep_tail{false};
   bool is_olh{false};
   bufferlist olh_tag;
@@ -200,6 +211,7 @@ struct RGWObjState {
     }
     return false;
   }
+  void set_prefetch_all();
 };
 
 class RGWFetchObjFilter {
@@ -781,6 +793,7 @@ public:
 
       int prepare(optional_yield y);
       static int range_to_ofs(uint64_t obj_size, int64_t &ofs, int64_t &end);
+      static int range_to_ofs(uint64_t obj_size, std::list<ByteRangeElement>&byterange);
       int read(int64_t ofs, int64_t end, bufferlist& bl, optional_yield y);
       int iterate(int64_t ofs, int64_t end, RGWGetDataCB *cb, optional_yield y);
       int get_attr(const char *name, bufferlist& dest, optional_yield y);
@@ -1272,7 +1285,12 @@ public:
    */
 
   int raw_obj_stat(rgw_raw_obj& obj, uint64_t *psize, ceph::real_time *pmtime, uint64_t *epoch,
-                   map<string, bufferlist> *attrs, bufferlist *first_chunk,
+                   map<string, bufferlist> *attrs,
+                   RGWObjVersionTracker *objv_tracker, optional_yield y);
+  int raw_obj_stat(rgw_raw_obj& obj, uint64_t *psize, ceph::real_time *pmtime, uint64_t *epoch,
+                   map<string, bufferlist> *attrs,
+                   list<ByteRangeElement>& prefetch_data,
+                   list<DataElement>& data_list,
                    RGWObjVersionTracker *objv_tracker, optional_yield y);
 
   int obj_operate(const RGWBucketInfo& bucket_info, const rgw_obj& obj, librados::ObjectWriteOperation *op);
