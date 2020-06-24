@@ -106,6 +106,7 @@ void handle_connection(boost::asio::io_context& context,
                        RGWProcessEnv& env, Stream& stream,
                        parse_buffer& buffer, bool is_ssl,
                        bool ignore_bad_content_length,
+                       bool accept_boto2_chunk_headers,
                        SharedMutex& pause_mutex,
                        rgw::dmclock::Scheduler *scheduler,
                        boost::system::error_code& ec,
@@ -126,6 +127,7 @@ void handle_connection(boost::asio::io_context& context,
     parser.header_limit(header_limit);
     parser.body_limit(body_limit);
     parser.ignore_bad_content_length(ignore_bad_content_length);
+    parser.accept_boto2_chunk_headers(accept_boto2_chunk_headers);
 
     // parse the header
     http::async_read_header(stream, buffer, parser, yield[ec]);
@@ -280,6 +282,7 @@ class AsioFrontend {
     bool use_ssl = false;
     bool use_nodelay = false;
     bool ignore_bad_content_length;
+    bool accept_boto2_chunk_headers;
 
     explicit Listener(boost::asio::io_context& context)
       : acceptor(context), socket(context) {}
@@ -465,6 +468,13 @@ int AsioFrontend::init()
   if (allow_request_smuggling != config.end()) {
     for (auto& l : listeners) {
       l.ignore_bad_content_length = (allow_request_smuggling->second == "1");
+    }
+  }
+
+  auto allow_boto2_chunk_headers = config.find("accept_boto2_chunk_headers");
+  if (allow_boto2_chunk_headers != config.end()) {
+    for (auto& l : listeners) {
+      l.accept_boto2_chunk_headers = (allow_boto2_chunk_headers->second == "1");
     }
   }
   
@@ -805,7 +815,9 @@ void AsioFrontend::accept(Listener& l, boost::system::error_code ec)
 #ifdef WITH_RADOSGW_BEAST_OPENSSL
   if (l.use_ssl) {
     spawn::spawn(context,
-      [this, s=std::move(socket), ic=l.ignore_bad_content_length] (spawn::yield_context yield) mutable {
+      [this, s=std::move(socket),
+             ic=l.ignore_bad_content_length,
+             ab=l.accept_boto2_chunk_headers] (spawn::yield_context yield) mutable {
         Connection conn{s};
         auto c = connections.add(conn);
         // wrap the socket in an ssl stream
@@ -821,7 +833,7 @@ void AsioFrontend::accept(Listener& l, boost::system::error_code ec)
         }
         buffer->consume(bytes);
         handle_connection(context, env, stream, *buffer, true,
-                          ic, pause_mutex,
+                          ic, ab, pause_mutex,
                           scheduler.get(), ec, yield);
         if (!ec) {
           // ssl shutdown (ignoring errors)
@@ -834,13 +846,15 @@ void AsioFrontend::accept(Listener& l, boost::system::error_code ec)
   {
 #endif // WITH_RADOSGW_BEAST_OPENSSL
     spawn::spawn(context,
-      [this, s=std::move(socket), ic=l.ignore_bad_content_length] (spawn::yield_context yield) mutable {
+      [this, s=std::move(socket),
+             ic=l.ignore_bad_content_length,
+             ab=l.accept_boto2_chunk_headers] (spawn::yield_context yield) mutable {
         Connection conn{s};
         auto c = connections.add(conn);
         auto buffer = std::make_unique<parse_buffer>();
         boost::system::error_code ec;
         handle_connection(context, env, s, *buffer, false,
-                          ic, pause_mutex,
+                          ic, ab, pause_mutex,
                           scheduler.get(), ec, yield);
         s.shutdown(tcp::socket::shutdown_both, ec);
       }, make_stack_allocator());

@@ -105,6 +105,27 @@ Options
 :Type: Integer (0 or 1)
 :Default: 0
 
+:Type: Integer
+:Default: None
+
+``accept_boto2_chunk_headers``
+
+:Description: If set beast will accept boto2 chunk header fields
+              when transfer_encoding: chunked is set.  Boto2 emits
+              chunk headers consisting of a hex count followed
+              by a single ';' but no field name.  This is not standard
+              behavior, but it is unlikely to be changed, and other
+              ceph frontends have accepted this form of chunk header.
+              If you have legacy applications that use boto2 and
+              chunk encoding, you may want to set this option.
+
+              ``1`` Accept boto2 chunk headers.
+
+              ``0`` Keep the default.
+
+:Type: Integer (0 or 1)
+:Default: 0
+
 
 Civetweb
 ========
