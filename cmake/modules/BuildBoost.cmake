@@ -4,6 +4,7 @@
 #  Boost_FOUND : boolean            - system has Boost
 #  Boost_LIBRARIES : list(filepath) - the libraries needed to use Boost
 #  Boost_INCLUDE_DIRS : list(path)  - the Boost include directories
+#  Boost_WAS_PATCHED: boolean	    - downloaded and patched boost
 #
 # Following hints are respected
 #
@@ -46,6 +47,7 @@ endmacro()
 
 function(do_build_boost version)
   cmake_parse_arguments(Boost_BUILD "" "" COMPONENTS ${ARGN})
+  set(Boost_WAS_PATCHED OFF)
   set(boost_features "variant=release")
   if(Boost_USE_MULTITHREADED)
     list(APPEND boost_features "threading=multi")
@@ -126,14 +128,6 @@ function(do_build_boost version)
   if(with_python_version)
     list(APPEND b2 python=${with_python_version})
   endif()
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|ARM")
-    list(APPEND b2 abi=aapcs)
-    list(APPEND b2 architecture=arm)
-    list(APPEND b2 binary-format=elf)
-  endif()
-  if(WITH_BOOST_VALGRIND)
-    list(APPEND b2 valgrind=on)
-  endif()
   set(build_command
     ${b2} headers stage
     #"--buildid=ceph" # changes lib names--can omit for static
@@ -166,12 +160,17 @@ function(do_build_boost version)
       URL ${boost_url}
       URL_HASH SHA256=${boost_sha256}
       DOWNLOAD_NO_PROGRESS 1)
+    set(patch_command PATCH_COMMAND
+      sh ${PROJECT_SOURCE_DIR}/src/patches/apply
+      ps=${PROJECT_SOURCE_DIR} b=${CMAKE_BINARY_DIR}/boost)
+    set(Boost_WAS_PATCHED ON)
   endif()
   # build all components in a single shot
   include(ExternalProject)
   ExternalProject_Add(Boost
     ${source_dir}
     CONFIGURE_COMMAND CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} ${configure_command}
+    ${patch_command}
     BUILD_COMMAND CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER} ${build_command}
     BUILD_IN_SOURCE 1
     INSTALL_COMMAND ${install_command}

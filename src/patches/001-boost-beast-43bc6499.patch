@@ -1,0 +1,122 @@
+commit 43bc64996d433ce9990d89ef9cf6f85073e964cf
+Author: Marcus Watts <mwatts@redhat.com>
+Date:   Fri Jun 5 16:55:31 2020 -0400
+
+    Experimental request smuggling fix
+
+diff --git a/include/boost/beast/http/basic_parser.hpp b/include/boost/beast/http/basic_parser.hpp
+index 4703f4e8..0dbdbb31 100644
+--- a/include/boost/beast/http/basic_parser.hpp
++++ b/include/boost/beast/http/basic_parser.hpp
+@@ -91,6 +91,9 @@ class basic_parser
+     // Consume input buffers across semantic boundaries
+     static unsigned constexpr flagEager                 = 1<<  1;
+ 
++    // rfc 2616 4.4: w/ transfer-encoding chunked: ignore content-length
++    static unsigned constexpr flagIgnoreBadContentLength = 1<<  14;
++
+     // The parser has read at least one byte
+     static unsigned constexpr flagGotSome               = 1<<  2;
+ 
+@@ -349,6 +352,48 @@ public:
+             f_ &= ~flagEager;
+     }
+ 
++    /// Returns `true` if we're to ignore content-length when transfer-encoding set.
++    bool
++    ignore_bad_content_length() const
++    {
++        return (f_ & flagIgnoreBadContentLength) != 0;
++    }
++
++    /** Set the ignore bad content length parse option.
++
++        Normally the parser returns an error if both transfer-encoding:
++        chunked and content-length are set.  This is the defined behavior
++        in RFC 7230 3.3.3.  An older definition of HTTP/1.1 is in RFC
++        2616, and there, in 4.4, it is instead defined that servers should
++        *ignore* content-length if transfer-encoding: chunked is sent.
++
++        The excuse in RFC 7230 is to prevent "request smuggling", and
++        it cites a paper, no longer available in its original location,
++        that describes how this works.  Based on extant references,
++        this appears to have described an attack based on proxy servers
++        attempting to enforce access restrictions but not sharing the
++        same understanding of transfer-encoding/content-length as the
++        backend server.
++
++        It turns out that there exist bad s3 client implementations that
++        set content-length when they should not.  This setting allows
++        those clients to work.  This should only be be set by sites that
++        understand the issues of request smuggling and are not depending
++        on proxy servers enforcing access restrictions.
++
++        The default setting is `false`.
++
++        @param v `true` to accept the consequences or `false` to disable it.
++    */
++    void
++    ignore_bad_content_length(bool v)
++    {
++        if(v)
++            f_ |= flagIgnoreBadContentLength;
++        else
++            f_ &= ~flagIgnoreBadContentLength;
++    }
++
+     /// Returns `true` if the skip parse option is set.
+     bool
+     skip() const
+diff --git a/include/boost/beast/http/impl/basic_parser.ipp b/include/boost/beast/http/impl/basic_parser.ipp
+index 485a999e..17ecf0c3 100644
+--- a/include/boost/beast/http/impl/basic_parser.ipp
++++ b/include/boost/beast/http/impl/basic_parser.ipp
+@@ -441,6 +441,16 @@ finish_header(error_code& ec, std::true_type)
+     // RFC 7230 section 3.3
+     // https://tools.ietf.org/html/rfc7230#section-3.3
+ 
++    if((f_ & (flagContentLength | flagChunked))
++            == (flagContentLength | flagChunked)) {
++        if (ignore_bad_content_length()) {
++            f_ &= ~flagContentLength;
++        } else {
++            ec = error::bad_content_length;
++            return;
++        }
++    }
++
+     if(f_ & flagSkipBody)
+     {
+         state_ = state::complete;
+@@ -465,6 +475,7 @@ finish_header(error_code& ec, std::true_type)
+     else if(f_ & flagChunked)
+     {
+         f_ |= flagHasBody;
++        len_ = 0;
+         state_ = state::chunk_header0;
+     }
+     else
+@@ -795,10 +806,6 @@ do_field(field f,
+             ec = error::bad_content_length;
+         };
+ 
+-        // conflicting field
+-        if(f_ & flagChunked)
+-            return bad_content_length();
+-
+         // Content-length may be a comma-separated list of integers
+         auto tokens_unprocessed = 1 +
+             std::count(value.begin(), value.end(), ',');
+@@ -846,12 +853,6 @@ do_field(field f,
+             return;
+         }
+ 
+-        if(f_ & flagContentLength)
+-        {
+-            // conflicting field
+-            ec = error::bad_transfer_encoding;
+-            return;
+-        }
+ 
+         ec = {};
+         auto const v = token_list{value};
