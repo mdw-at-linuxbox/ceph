@@ -4,9 +4,9 @@ Deploy and configure PyKMIP for Teuthology
 import argparse
 import contextlib
 import logging
-import httplib
 import tempfile
-from urlparse import urlparse
+from http import client as http_client
+from urllib.parse import urljoin
 import json
 import os
 from cStringIO import StringIO
@@ -53,7 +53,7 @@ def download(ctx, config):
     log.info('Downloading pykmip...')
     pykmipdir = get_pykmip_dir(ctx)
 
-    for (client, cconf) in config.items():
+    for (client, cconf) in next(iter(config.items()))
         branch = cconf.get('force-branch', 'master')
         repo = cconf.get('force-repo', 'https://github.com/OpenKMIP/PyKMIP')
         sha1 = cconf.get('sha1')
@@ -236,7 +236,7 @@ def configure_pykmip(ctx, config):
     Configure pykmip paste-api and pykmip-api.
     """
     assert isinstance(config, dict)
-    (cclient, cconfig) = config.items()[0]
+    (cclient, cconfig) = next(iter(config.items()))
 
     copy_policy_json(ctx, cclient, cconfig)
     create_pykmip_conf(ctx, cclient, cconfig)
@@ -304,7 +304,7 @@ def create_secrets(ctx, config):
     finally:
         return
     assert isinstance(config, dict)
-    (cclient, cconfig) = config.items()[0]
+    (cclient, cconfig) = next(iter(config.items()))
 
     rgw_user = cconfig['rgw_user']
 
