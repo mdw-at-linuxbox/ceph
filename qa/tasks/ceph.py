@@ -80,14 +80,15 @@ def ceph_crash(ctx, config):
     """
 
     # Add logs directory to job's info log file
-    with open(os.path.join(ctx.archive, 'info.yaml'), 'r+') as info_file:
-        info_yaml = yaml.safe_load(info_file)
-        info_file.seek(0)
-        if 'archive' not in info_yaml:
-            info_yaml['archive'] = {'crash': '/var/lib/ceph/crash'}
-        else:
-            info_yaml['archive']['crash'] = '/var/lib/ceph/crash'
-        yaml.safe_dump(info_yaml, info_file, default_flow_style=False)
+    if ctx.archive is not None:
+        with open(os.path.join(ctx.archive, 'info.yaml'), 'r+') as info_file:
+            info_yaml = yaml.safe_load(info_file)
+            info_file.seek(0)
+            if 'archive' not in info_yaml:
+                info_yaml['archive'] = {'crash': '/var/lib/ceph/crash'}
+            else:
+                info_yaml['archive']['crash'] = '/var/lib/ceph/crash'
+            yaml.safe_dump(info_yaml, info_file, default_flow_style=False)
 
     try:
         yield
@@ -159,14 +160,15 @@ def ceph_log(ctx, config):
     )
 
     # Add logs directory to job's info log file
-    with open(os.path.join(ctx.archive, 'info.yaml'), 'r+') as info_file:
-        info_yaml = yaml.safe_load(info_file)
-        info_file.seek(0)
-        if 'archive' not in info_yaml:
-            info_yaml['archive'] = {'log': '/var/log/ceph'}
-        else:
-            info_yaml['archive']['log'] = '/var/log/ceph'
-        yaml.safe_dump(info_yaml, info_file, default_flow_style=False)
+    if ctx.archive is not None:
+        with open(os.path.join(ctx.archive, 'info.yaml'), 'r+') as info_file:
+            info_yaml = yaml.safe_load(info_file)
+            info_file.seek(0)
+            if 'archive' not in info_yaml:
+                info_yaml['archive'] = {'log': '/var/log/ceph'}
+            else:
+                info_yaml['archive']['log'] = '/var/log/ceph'
+            yaml.safe_dump(info_yaml, info_file, default_flow_style=False)
 
     class Rotater(object):
         stop_event = gevent.event.Event()
