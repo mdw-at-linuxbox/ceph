@@ -19,6 +19,8 @@ function(gperf_generate input output)
     )
 endfunction()
 
+find_package(ICU 52.0 COMPONENTS uc REQUIRED)
+
 set(librgw_common_srcs
   services/svc_finisher.cc
   services/svc_bi_rados.cc
@@ -176,6 +178,7 @@ target_include_directories(rgw_common PUBLIC "${CMAKE_SOURCE_DIR}/src/fmt/includ
 target_include_directories(rgw_common PUBLIC "${CMAKE_SOURCE_DIR}/src/rgw")
 target_include_directories(rgw_common PRIVATE "${CMAKE_SOURCE_DIR}/src/lua/src")
 target_include_directories(rgw_common PRIVATE "${CMAKE_BINARY_DIR}/src/lua")
+target_include_directories(rgw_common SYSTEM PRIVATE "${ICU_INCLUDE_DIRS}")
 
 
 set(librgw_kmip_srcs
@@ -259,6 +262,7 @@ target_link_libraries(rgw_a
   ${CURL_LIBRARIES}
   ${EXPAT_LIBRARIES}
   ${OPENLDAP_LIBRARIES} ${CRYPTO_LIBS}
+  ICU::uc
   OATH::OATH)
 
 if(WITH_CURL_OPENSSL)
