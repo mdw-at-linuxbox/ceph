@@ -167,12 +167,12 @@ public:
   VaultSecretEngine(CephContext *cct) {
     this->cct = cct;
   }
-
-//  virtual ~VaultSecretEngine(){}
 };
 
 
 class TransitSecretEngine: public VaultSecretEngine {
+public:
+  int compat;
 
 private:
   EngineParmMap parms;
@@ -194,9 +194,32 @@ private:
 
 public:
   TransitSecretEngine(CephContext *cct, EngineParmMap parms): VaultSecretEngine(cct), parms(parms) {
+    compat = -1;
     for (auto& e: parms) {
+      if (e.first == "compat") {
+	if (e.second.empty()) {
+	  compat = 1;
+	} else {
+	  size_t ep;
+
+	  compat = std::stoi(e.second, &ep);
+	  if (ep != e.second.length()) {
+	    lderr(cct) << "warning: vault transit secrets engine : compat="
+	      << e.second << " trailing junk? (ignored)" << dendl;
+	  }
+	}
+	continue;
+      }
       lderr(cct) << "ERROR: vault transit secrets engine : parameter "
 	<< e.first << "=" << e.second << " ignored" << dendl;
+    }
+    if (compat == -1) {
+      std::string_view v { cct->_conf->rgw_crypt_vault_prefix };
+      if (v.rfind("export/encryption-key") == v.length() - 21) {
+	compat = 2;
+      } else {
+	compat = 0;
+      }
     }
   }
 
@@ -226,6 +249,63 @@ public:
     }
 
     return decode_secret(json_obj, actual_key);
+  }
+
+  int make_actual_key(map<string, bufferlist>& attrs, std::string& actual_key)
+  {
+    std::string key_id = get_str_attribute(attrs, RGW_ATTR_CRYPT_KEYID);
+    if (compat == 2) return get_key(key_id, actual_key);
+#if 0
+	data: {context }
+	post to prefix + /datakey/plaintext/ + key_id
+	jq: .data.plaintext	-> key
+	jq: .data.ciphertext	-> (to-be) named attribute
+    if (key_id.rfind("/") != std::string::npos) {
+	ldout(cct, 5) << "transit: bad old key: <" << key_id << ">" << dendl;
+	return -EINVAL;
+    }
+    JSONParser parser;
+    std::string context = get_str_attribute(attrs, RGW_ATTR_CRYPT_CONTEXT);
+lderr(cct) << "TEMP cooked_context<" << context << ">" << dendl;
+lderr(cct) << "TEMP compat = " << compat << dendl;
+
+    int res = send_request(key_id, &parser);
+    if (res < 0) {
+      return res;
+    }
+
+    JSONObj* json_obj = &parser;
+    std::array<std::string, 3> elements = {"data", "keys", version};
+    for(const auto& elem : elements) {
+      json_obj = json_obj->find_obj(elem);
+      if (!json_obj) {
+        ldout(cct, 0) << "ERROR: Key not found in JSON response from Vault using Transit Engine" << dendl;
+        return -EINVAL;
+      }
+    }
+    return decode_secret(json_obj, actual_key);
+#else
+lderr(cct) << "make_key: not yet" << dendl;
+    return -EINVAL;
+#endif
+  }
+
+  int reconstitute_actual_key(map<string, bufferlist>& attrs, std::string& actual_key)
+  {
+    std::string key_id = get_str_attribute(attrs, RGW_ATTR_CRYPT_KEYID);
+    if (compat == 2 || key_id.rfind("/") != std::string::npos) {
+      return get_key(key_id, actual_key);
+    }
+#if 0
+	.data.ciphertext <- (to-be) named attribute
+	data: {context ciphertext}
+	post to prefix + /decrypt/ + key_id
+	jq: .data.plaintext
+    return decode_secret(json_obj, actual_key);
+#else
+lderr(cct) << "reconstitute_key: not yet" << dendl;
+    return -EINVAL;
+#endif
   }
 
 };
@@ -344,15 +424,6 @@ class KmipSecretEngine: public SecretEngine {
 
 protected:
   CephContext *cct;
-
-//  int send_request(std::string_view key_id, JSONParser* parser) override
-//  {
-//    return -EINVAL;
-//  }
-//
-//  int decode_secret(JSONObj* json_obj, std::string& actual_key){
-//    return -EINVAL;
-//  }
 
 public:
 
@@ -519,17 +590,15 @@ std::string config_to_engine_and_parms(CephContext *cct,
 
 static int get_actual_key_from_vault(CephContext *cct,
                                      map<string, bufferlist>& attrs,
-                                     std::string& actual_key)
+                                     std::string& actual_key, bool make_it)
 {
   std::string secret_engine_str = cct->_conf->rgw_crypt_vault_secret_engine;
-  std::string context = get_str_attribute(attrs, RGW_ATTR_CRYPT_CONTEXT);
   EngineParmMap secret_engine_parms;
   auto secret_engine { config_to_engine_and_parms(
     cct, "rgw_crypt_vault_secret_engine",
     secret_engine_str, secret_engine_parms) };
   ldout(cct, 20) << "Vault authentication method: " << cct->_conf->rgw_crypt_vault_auth << dendl;
   ldout(cct, 20) << "Vault Secrets Engine: " << secret_engine << dendl;
-lderr(cct) << "TEMP cooked_context<" << context << ">" << dendl;
 
   if (RGW_SSE_KMS_VAULT_SE_KV == secret_engine){
     std::string key_id = get_str_attribute(attrs, RGW_ATTR_CRYPT_KEYID);
@@ -537,11 +606,13 @@ lderr(cct) << "TEMP cooked_context<" << context << ">" << dendl;
     return engine.get_key(key_id, actual_key);
   }
   else if (RGW_SSE_KMS_VAULT_SE_TRANSIT == secret_engine){
-    std::string key_id = get_str_attribute(attrs, RGW_ATTR_CRYPT_KEYID);
     TransitSecretEngine engine(cct, std::move(secret_engine_parms));
-    return engine.get_key(key_id, actual_key);
+    std::string key_id = get_str_attribute(attrs, RGW_ATTR_CRYPT_KEYID);
+    return make_it
+	? engine.make_actual_key(attrs, actual_key)
+	: engine.reconstitute_actual_key(attrs, actual_key);
   }
-  else{
+  else {
     ldout(cct, 0) << "Missing or invalid secret engine" << dendl;
     return -EINVAL;
   }
@@ -552,7 +623,7 @@ static int make_actual_key_from_vault(CephContext *cct,
                                      map<string, bufferlist>& attrs,
                                      std::string& actual_key)
 {
-    return get_actual_key_from_vault(cct, attrs, actual_key);
+    return get_actual_key_from_vault(cct, attrs, actual_key, true);
 }
 
 
@@ -560,7 +631,7 @@ static int reconstitute_actual_key_from_vault(CephContext *cct,
                                      map<string, bufferlist>& attrs,
                                      std::string& actual_key)
 {
-    return get_actual_key_from_vault(cct, attrs, actual_key);
+    return get_actual_key_from_vault(cct, attrs, actual_key, false);
 }
 
 
