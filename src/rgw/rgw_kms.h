@@ -48,8 +48,5 @@ class SecretEngine {
 public:
   virtual int get_key(std::string_view key_id, std::string& actual_key) = 0;
   virtual ~SecretEngine(){};
-//protected:
-//  virtual int send_request(std::string_view key_id, JSONParser* parser) = 0;
-//  virtual int decode_secret(JSONObj* json_obj, std::string& actual_key) = 0;
 };
 #endif
