@@ -24,6 +24,9 @@
 
 using namespace rgw;
 
+#ifndef FORTEST_VIRTUAL
+#define  FORTEST_VIRTUAL	/**/
+#endif
 
 /**
  * Memory pool for use with rapidjson.  This version
@@ -204,6 +207,7 @@ protected:
     return res;
   }
 
+  FORTEST_VIRTUAL
   int send_request(const char *method, std::string_view infix,
     std::string_view key_id,
     const std::string& postdata,
@@ -362,6 +366,7 @@ public:
 
     ldout(cct, 20) << "Parse response into JSON Object" << dendl;
 
+    secret_bl.append('\0');
     rapidjson::StringStream isw(secret_bl.c_str());
     d.ParseStream<>(isw);
 
@@ -431,6 +436,7 @@ public:
 
     ldout(cct, 20) << "Parse response into JSON Object" << dendl;
 
+    secret_bl.append('\0');
     rapidjson::StringStream isw(secret_bl.c_str());
     d.SetNull();
     d.ParseStream<>(isw);
@@ -514,6 +520,7 @@ public:
 
     ldout(cct, 20) << "Parse response into JSON Object" << dendl;
 
+    secret_bl.append('\0');
     rapidjson::StringStream isw(secret_bl.c_str());
     d.SetNull();
     d.ParseStream<>(isw);
@@ -574,6 +581,7 @@ public:
 
     ldout(cct, 20) << "Parse response into JSON Object" << dendl;
 
+    secret_bl.append('\0');
     rapidjson::StringStream isw(secret_bl.c_str());
     d.ParseStream<>(isw);
 
