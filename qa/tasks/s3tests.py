@@ -326,7 +326,7 @@ def configure(ctx, config):
         elif hasattr(ctx, 'vault'):
             engine_or_flavor = ctx.vault.get('flavor',ctx.vault.engine)
             keys=[]
-            for name in (x['Path'] for x in ctx.vault.get('keys', {}).get(ctx.rgw.get('vault_role'))):
+            for name in (x['Path'] for x in vars(ctx.vault).get('keys', {}).get(ctx.rgw.vault_role)):
                 keys.append(name)
 
             keys.extend(['testkey-1','testkey-2'])
