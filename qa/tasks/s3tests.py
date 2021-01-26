@@ -324,7 +324,7 @@ def configure(ctx, config):
                 s3tests_conf['DEFAULT']['kms_keyid2'] = key['id']
 
         elif hasattr(ctx, 'vault'):
-            engine_or_flavor = ctx.vault.get('flavor',ctx.vault.engine)
+            engine_or_flavor = vars(ctx.vault).get('flavor',ctx.vault.engine)
             keys=[]
             for name in (x['Path'] for x in vars(ctx.vault).get('keys', {}).get(ctx.rgw.vault_role)):
                 keys.append(name)
