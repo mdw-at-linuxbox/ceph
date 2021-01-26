@@ -330,7 +330,7 @@ def configure(ctx, config):
                 keys.append(name)
 
             keys.extend(['testkey-1','testkey-2'])
-            if flavor == "old":
+            if engine_or_flavor == "old":
                 keys=[keys[i] + "/1" for i in range(len(keys))]
 
             properties = properties.get('vault_%s' % engine_or_flavor, {})
