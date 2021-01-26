@@ -189,6 +189,7 @@ def create_secrets(ctx, config):
     if secrets is None:
         raise ConfigError("No secrets specified, please specify some.")
 
+    ctx.vault.keys[cclient] = []
     for secret in secrets:
         try:
             path = secret['path']
@@ -212,7 +213,7 @@ def create_secrets(ctx, config):
 
         send_req(ctx, cconfig, cclient, urljoin(prefix, path), json.dumps(data))
 
-        ctx.vault.keys[cclient] = { 'Path', path };
+        ctx.vault.keys[cclient].append({ 'Path': path });
 
     log.info("secrets created")
     yield
