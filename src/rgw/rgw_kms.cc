@@ -407,13 +407,13 @@ public:
       ldout(cct, 0) << "sorry, can't allow / in keyid" << dendl;
       return -EINVAL;
     }
-#if 0
+/*
 	data: {context }
 	post to prefix + /datakey/plaintext/ + key_id
 	jq: .data.plaintext	-> key
 	jq: .data.ciphertext	-> (to-be) named attribute
-    return decode_secret(json_obj, actual_key);
-#endif
+    return decode_secret(json_obj, actual_key)
+*/
     std::string context = get_str_attribute(attrs, RGW_ATTR_CRYPT_CONTEXT);
     ZeroPoolDocument d { rapidjson::kObjectType };
     auto &allocator { d.GetAllocator() };
@@ -490,13 +490,13 @@ public:
     if (compat == 2 || key_id.rfind("/") != std::string::npos) {
       return get_key(key_id, actual_key);
     }
-#if 0
+/*
 	.data.ciphertext <- (to-be) named attribute
 	data: {context ciphertext}
 	post to prefix + /decrypt/ + key_id
 	jq: .data.plaintext
-    return decode_secret(json_obj, actual_key);
-#endif
+    return decode_secret(json_obj, actual_key)
+*/
     std::string context = get_str_attribute(attrs, RGW_ATTR_CRYPT_CONTEXT);
     ZeroPoolDocument d { rapidjson::kObjectType };
     auto &allocator { d.GetAllocator() };
@@ -913,11 +913,6 @@ static int get_actual_key_from_kmip(CephContext *cct,
                                      std::string& actual_key)
 {
   std::string secret_engine = RGW_SSE_KMS_KMIP_SE_KV;
-#if 0
-  std::string secret_engine = cct->_conf->rgw_crypt_vault_secret_engine;
-  ldout(cct, 20) << "Vault authentication method: " << cct->_conf->rgw_crypt_vault_auth << dendl;
-  ldout(cct, 20) << "Vault Secrets Engine: " << secret_engine << dendl;
-#endif
 
   if (RGW_SSE_KMS_KMIP_SE_KV == secret_engine){
     KmipSecretEngine engine(cct);
