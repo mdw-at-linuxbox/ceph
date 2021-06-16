@@ -1112,8 +1112,8 @@ int make_actual_key_from_sse_s3(CephContext *cct,
   SseS3Context kctx { cct };
   std::string kms_backend { kctx.backend() };
   if (RGW_SSE_KMS_BACKEND_VAULT != kms_backend) {
-  ldout(cct, 0) << "ERROR: Unsupported rgw_crypt_s3_backend: " << kms_backend << dendl;
-  return -EINVAL;
+    ldout(cct, 0) << "ERROR: Unsupported rgw_crypt_s3_backend: " << kms_backend << dendl;
+    return -EINVAL;
   }
   return make_actual_key_from_vault(cct, kctx, attrs, actual_key);
 }
