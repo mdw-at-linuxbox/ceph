@@ -150,7 +150,27 @@ add_name_val_to_obj(std::string &n, std::string &v, rapidjson::GenericValue<E,A>
 
 template<typename E, typename A = ZeroPoolAllocator>
 static inline void
+add_name_val_to_obj(std::string &n, bool v, rapidjson::GenericValue<E,A> &d,
+  A &allocator)
+{
+  rapidjson::GenericValue<E,A> name, val;
+  name.SetString(n.c_str(), n.length(), allocator);
+  val.SetBool(v);
+  d.AddMember(name, val, allocator);
+}
+
+template<typename E, typename A = ZeroPoolAllocator>
+static inline void
 add_name_val_to_obj(const char *n, std::string &v, rapidjson::GenericValue<E,A> &d,
+  A &allocator)
+{
+  std::string ns{n, strlen(n) };
+  add_name_val_to_obj(ns, v, d, allocator);
+}
+
+template<typename E, typename A = ZeroPoolAllocator>
+static inline void
+add_name_val_to_obj(const char *n, bool v, rapidjson::GenericValue<E,A> &d,
   A &allocator)
 {
   std::string ns{n, strlen(n) };
@@ -589,6 +609,97 @@ public:
       }
       return decode_secret(plaintext_v.GetString(), actual_key);
     }
+  }
+
+// XXX configuration namespace glue ?
+// XXX type, derived configurable ?
+  int create_bucket_key(std::string& key_name)
+  {
+/*
+	.data.ciphertext <- (to-be) named attribute
+	data: {"type": "chacha20-poly1305", "derived": true}
+	post to prefix + key_name
+	empty output.
+*/
+    ZeroPoolDocument d { rapidjson::kObjectType };
+    auto &allocator { d.GetAllocator() };
+    bufferlist dummy_bl;
+    std::string chacha20_poly1305 { "chacha20-poly1305" };
+
+    add_name_val_to_obj("type", chacha20_poly1305, d, allocator);
+    add_name_val_to_obj("derived", true, d, allocator);
+    rapidjson::StringBuffer buf;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
+    if (!d.Accept(writer)) {
+      ldout(cct, 0) << "ERROR: can't make json for vault" << dendl;
+      return -EINVAL;
+    }
+    std::string post_data { buf.GetString() };
+
+    int res = send_request("POST", "/keys/", key_name,
+	post_data, dummy_bl);
+    if (res < 0) {
+      return res;
+    }
+    if (dummy_bl.length() != 0) {
+      ldout(cct, 0) << "ERROR: unexpected response from Vault making a key: "
+	<< dummy_bl
+	<< dendl;
+    }
+    return 0;
+  }
+// XXX configuration namespace glue ?
+  int delete_bucket_key(std::string& key_name)
+  {
+/*
+	/keys/<keyname>/config
+	data: {"deletion_allowed": true}
+	post to prefix + key_name
+	empty output.
+*/
+    ZeroPoolDocument d { rapidjson::kObjectType };
+    auto &allocator { d.GetAllocator() };
+    bufferlist dummy_bl;
+    std::ostringstream path_temp;
+    path_temp << "/keys/";
+    path_temp << key_name;
+    std::string delete_path { path_temp.str() };
+    path_temp << "/config";
+    std::string config_path { path_temp.str() };
+
+    add_name_val_to_obj("deletion_allowed", true, d, allocator);
+    rapidjson::StringBuffer buf;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buf);
+    if (!d.Accept(writer)) {
+      ldout(cct, 0) << "ERROR: can't make json for vault" << dendl;
+      return -EINVAL;
+    }
+    std::string post_data { buf.GetString() };
+
+    int res = send_request("POST", "", config_path,
+	post_data, dummy_bl);
+    if (res < 0) {
+      return res;
+    }
+    if (!dummy_bl.length() != 0) {
+      ldout(cct, 0) << "ERROR: unexpected response from Vault marking key to delete: "
+	<< dummy_bl
+	<< dendl;
+      return -EINVAL;
+    }
+
+    res = send_request("DELETE", "", delete_path,
+	string{}, dummy_bl);
+    if (res < 0) {
+      return res;
+    }
+    if (!dummy_bl.length() != 0) {
+      ldout(cct, 0) << "ERROR: unexpected response from Vault deleting key: "
+	<< dummy_bl
+	<< dendl;
+      return -EINVAL;
+    }
+    return 0;
   }
 };
 
