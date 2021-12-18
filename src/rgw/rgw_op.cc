@@ -52,7 +52,7 @@
 #include "rgw_notify_event_type.h"
 #include "rgw_sal.h"
 #include "rgw_sal_rados.h"
-#include "rgw_kms.h"
+//#include "rgw_kms.h"	// XXX fixme
 
 #include "services/svc_zone.h"
 #include "services/svc_quota.h"
@@ -8612,6 +8612,7 @@ void RGWPutBucketEncryption::execute(optional_yield y)
     return;
   }
 
+#if 0	// XXX fixme
   bufferlist key_id_bl;
   string bucket_owner_id = s->bucket->get_info().owner.id;
   key_id_bl.append(bucket_owner_id.c_str(), bucket_owner_id.size() + 1);
@@ -8623,13 +8624,16 @@ void RGWPutBucketEncryption::execute(optional_yield y)
     ldpp_dout(this, 20) << "Generate KEK returned =" << op_ret << dendl;
     return;
   }
+#endif
 
   bufferlist conf_bl;
   bucket_encryption_conf.encode(conf_bl);
-  op_ret = retry_raced_bucket_write(this, s->bucket.get(), [this, y, &conf_bl, &key_id_bl] {
+  op_ret = retry_raced_bucket_write(this, s->bucket.get(), [this, y, &conf_bl] {
     rgw::sal::Attrs attrs = s->bucket->get_attrs();
     attrs[RGW_ATTR_BUCKET_ENCRYPTION_POLICY] = conf_bl;
+#if 0	// XXX fixme
     attrs[RGW_ATTR_BUCKET_ENCRYPTION_KEY_ID] = key_id_bl;
+#endif
     return s->bucket->merge_and_store_attrs(this, attrs, y);
   });
 }
