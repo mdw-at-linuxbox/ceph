@@ -2761,6 +2761,18 @@ options:
   - kmip
   with_legacy: true
 
+- name: rgw_crypt_sse_s3_key_template
+  type: str
+  level: advanced
+  desc: template for per-bucket sse-s3 keys in vault.
+  services:
+  - rgw
+  default: "%bucket_id"
+  see_also:
+  - rgw_crypt_sse_s3_backend
+  - rgw_crypt_sse_s3_vault_auth
+  - rgw_crypt_sse_s3_vault_addr
+  with_legacy: true
 - name: rgw_crypt_sse_s3_vault_auth
   type: str
   level: advanced
