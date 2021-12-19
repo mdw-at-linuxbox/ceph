@@ -1489,6 +1489,33 @@ int rgw_s3_prepare_decrypt(struct req_state* s,
   return 0;
 }
 
+int rgw_remove_sse_s3_bucket_key(req_state *s)
+{
+  int res;
+  auto key_id { expand_key_name(s, s->cct->_conf->rgw_crypt_sse_s3_key_template) };
+  auto saved_key { fetch_bucket_key_id(s) };
+  size_t i;
+
+  if (saved_key == "") {
+    return 0;
+  } else if (saved_key != key_id) {
+    ldpp_dout(s, 5) << "Found but will not delete strange KEK ID: " << saved_key << dendl;
+    return 0;
+  }
+  i = s->cct->_conf->rgw_crypt_sse_s3_key_template.find("%bucket_id");
+  if (i == std::string_view::npos) {
+    ldpp_dout(s, 5) << "Kept valid KEK ID: " << saved_key << dendl;
+    return 0;
+  }
+  ldpp_dout(s, 5) << "Removing valid KEK ID: " << saved_key << dendl;
+  map<string, bufferlist> dummy_attrs;	// XXX fixme
+  res = remove_ss3_s3_bucket_key(s, s->cct, dummy_attrs, saved_key);
+  if (res != 0) {
+    ldpp_dout(s, 0) << "ERROR: Unable to remove KEK ID: " << saved_key << " got " << res << dendl;
+  }
+  return res;
+}
+
 /*********************************************************************
 *	"BOTTOM OF FILE"
 *	I've left some commented out lines above.  They are there for
