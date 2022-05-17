@@ -424,6 +424,7 @@ BuildRequires:  libnuma-devel
 %if 0%{?rhel} >= 8
 BuildRequires:  /usr/bin/pathfix.py
 %endif
+BuildRequires:  xsimd-devel
 
 %description
 Ceph is a massively scalable, open-source, distributed storage system that runs
