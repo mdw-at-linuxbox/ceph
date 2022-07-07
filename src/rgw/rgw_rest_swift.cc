@@ -2803,9 +2803,24 @@ int RGWHandler_REST_SWIFT::authorize(const DoutPrefixProvider *dpp, optional_yie
 int RGWHandler_REST_SWIFT::postauth_init(optional_yield y)
 {
   struct req_init_state* t = &s->init_state;
+auto OldTenant { s->bucket_tenant };
+std::string which;
 
   /* XXX Stub this until Swift Auth sets account into URL. */
-  s->bucket_tenant = s->user->get_tenant();
+  if (g_conf()->rgw_swift_account_in_url
+      && s->user->get_id().id == RGW_USER_ANON_ID) {
+which = "I";
+    s->bucket_tenant = s->account_name;
+  } else {
+which = "II";
+    s->bucket_tenant = s->user->get_tenant();
+  }
+ldpp_dout(s, 0) << "PAI conf=" << g_conf()->rgw_swift_account_in_url
+<< " id=" << s->user->get_id().id
+<< " -> tenant=" << s->bucket_tenant
+<< "; was=" << OldTenant
+<< " which=" << which
+<< dendl;
   s->bucket_name = t->url_bucket;
 
   if (!s->object) {
