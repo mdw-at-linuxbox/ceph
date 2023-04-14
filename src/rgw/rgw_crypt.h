@@ -146,6 +146,21 @@ public:
   int process(bufferlist&& data, uint64_t logical_offset) override;
 }; /* RGWPutObj_BlockEncrypt */
 
+struct RGWDecryptContext {
+  DoutPrefixProvider *dpp;
+  CephContext* cct;
+  std::string &error_message;
+  bool get_or_head;
+  bool secure_channel;
+  const RGWEnv *env;
+  RGWDecryptContext(req_state *s) : dpp(s), cct(s->cct), error_message(s->err.message),
+	get_or_head(s->op == OP_GET || s->op == OP_HEAD),
+	secure_channel(!s->cct->_conf->rgw_crypt_require_ssl ||
+		rgw_transport_is_secure(s->cct, *s->info.env)),
+	env(s->info.env) {
+  };
+}; /* RGWDecryptContext */
+
 
 int rgw_s3_prepare_encrypt(req_state* s, optional_yield y,
                            std::map<std::string, ceph::bufferlist>& attrs,
@@ -154,6 +169,18 @@ int rgw_s3_prepare_encrypt(req_state* s, optional_yield y,
                                     std::string>& crypt_http_responses);
 
 int rgw_s3_prepare_decrypt(req_state* s, optional_yield y,
+                           std::map<std::string, ceph::bufferlist>& attrs,
+                           std::unique_ptr<BlockCrypt>* block_crypt,
+                           std::map<std::string,
+                                    std::string>& crypt_http_responses);
+
+int rgw_s3_prepare_decrypt(req_state* s,
+                           std::map<std::string, ceph::bufferlist>& attrs,
+                           std::unique_ptr<BlockCrypt>* block_crypt,
+                           std::map<std::string,
+                                    std::string>& crypt_http_responses);
+
+int rgw_s3_prepare_decrypt(RGWDecryptContext &cb,
                            std::map<std::string, ceph::bufferlist>& attrs,
                            std::unique_ptr<BlockCrypt>* block_crypt,
                            std::map<std::string,
