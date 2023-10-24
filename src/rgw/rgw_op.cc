@@ -5638,6 +5638,7 @@ RGWProcessEnv dummy_penv;
 req_state dummy_s[1] = {{nullptr,dummy_penv,nullptr,0ull}};
 
 class RGWCOE_make_filter_pipeline : public rgw::sal::ObjectFilter {
+  CephContext *cct;
   int op_ret;
   map<string, bufferlist> attrs;
   bool need_decompress;
@@ -5653,13 +5654,19 @@ class RGWCOE_make_filter_pipeline : public rgw::sal::ObjectFilter {
   bool partial_content = false;
   std::map<std::string, std::string> crypt_http_responses;	// XXX who consumes?
   std::unique_ptr<rgw::sal::ObjectProcessor> oproc;
+  RGWDecryptContext dctx;
 public:
-  RGWCOE_make_filter_pipeline(map<string, bufferlist> _a, bool _skip_decrypt,
-      DoutPrefixProvider *_dpp)
-    : attrs(_a), encrypted( attrs.count(RGW_ATTR_CRYPT_MODE)),
+  RGWCOE_make_filter_pipeline(CephContext *_cct, DoutPrefixProvider *_dpp,
+      map<string, bufferlist> _a, bool _skip_decrypt)
+    : cct(_cct), attrs(_a), encrypted( attrs.count(RGW_ATTR_CRYPT_MODE)),
       s(dummy_s),
-      skip_decrypt(_skip_decrypt), dpp(_dpp)
-  {
+      skip_decrypt(_skip_decrypt), dpp(_dpp),
+      dctx( _dpp, _cct,
+        s->err.message,
+        false, 
+        !s->cct->_conf->rgw_crypt_require_ssl
+            || rgw_transport_is_secure(s->cct, *s->info.env),
+        s->info.env ) {
   };
   int get_decrypt_filter(std::unique_ptr<RGWGetObj_Filter> *filter,
       RGWGetObj_Filter* cb,
@@ -5669,10 +5676,10 @@ public:
     }
     int res = 0;
     std::unique_ptr<BlockCrypt> block_crypt;
-    res = rgw_s3_prepare_decrypt(s, attrs, &block_crypt, crypt_http_responses);
+    res = rgw_s3_prepare_decrypt(dctx, attrs, &block_crypt, crypt_http_responses);
     if (res == 0) {
       if (block_crypt != nullptr) {
-        auto f = std::make_unique<RGWGetObj_BlockDecrypt>(s, s->cct, cb, std::move(block_crypt), s->yield);
+        auto f = std::make_unique<RGWGetObj_BlockDecrypt>(dpp, cct, cb, std::move(block_crypt), s->yield);
         if (manifest_bl != nullptr) {
           res = f->read_manifest(dpp, *manifest_bl);
           if (res == 0) {
@@ -5698,7 +5705,7 @@ public:
     if (need_decompress && (!encrypted || !skip_decrypt)) {
       s->obj_size = cs_info.orig_size;			// XXX where?
       s->object->set_obj_size(cs_info.orig_size);		// XXX where?
-      decompress.emplace(s->cct, &cs_info, partial_content, filter);
+      decompress.emplace(cct, &cs_info, partial_content, filter);
       filter = &*decompress;
     }
     // decrypt
@@ -5812,7 +5819,7 @@ void RGWCopyObj::execute(optional_yield y)
     return;
   }
   try {
-    RGWCOE_make_filter_pipeline cb { attrs, false, this };
+    RGWCOE_make_filter_pipeline cb { s->cct, this, attrs, false };
     op_ret = s->src_object->copy_object(s->user.get(),
 	   &s->info,
 	   source_zone,
