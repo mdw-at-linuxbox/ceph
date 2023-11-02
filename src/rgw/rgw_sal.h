@@ -254,7 +254,7 @@ class ObjectProcessor : public DataProcessor {
 class ObjectFilter {
 public:
   virtual ~ObjectFilter() = default;
-  virtual ObjectProcessor & get_filter(ObjectProcessor& next) = 0;
+  virtual ObjectProcessor & get_filter(ObjectProcessor& next, optional_yield y) = 0;
 };
 
 /** A list of key-value attributes */

@@ -188,7 +188,7 @@ struct RGWDecryptContext {
   RGWDecryptContext(const DoutPrefixProvider* _dpp, CephContext* _cct,
             std::string &_error_message,
             bool _get_or_head, bool _secure_channel,
-            RGWEnv *env)
+            const RGWEnv *env)
         : dpp(_dpp), cct(_cct), error_message(_error_message),
 	get_or_head(_get_or_head),
 	secure_channel(_secure_channel),
@@ -212,7 +212,7 @@ int rgw_s3_prepare_decrypt(req_state* s, optional_yield y,
                            std::map<std::string,
                                     std::string>& crypt_http_responses);
 
-int rgw_s3_prepare_decrypt(RGWDecryptContext &cb,
+int rgw_s3_prepare_decrypt(RGWDecryptContext &cb, optional_yield y,
                            std::map<std::string, ceph::bufferlist>& attrs,
                            std::unique_ptr<BlockCrypt>* block_crypt,
                            std::map<std::string,

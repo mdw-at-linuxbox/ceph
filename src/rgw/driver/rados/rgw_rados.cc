@@ -4909,7 +4909,7 @@ int RGWRados::copy_obj_data(RGWObjectCtx& obj_ctx,
   AtomicObjectProcessor aoproc(aio.get(), this, dest_bucket_info,
                                   &dest_placement, dest_bucket_info.owner,
                                   obj_ctx, dest_obj, olh_epoch, tag, dpp, y);
-  rgw::sal::ObjectProcessor &processor { read_filter ? read_filter->get_filter(aoproc)
+  rgw::sal::ObjectProcessor &processor { read_filter ? read_filter->get_filter(aoproc, y)
     : static_cast< rgw::sal::ObjectProcessor&>(aoproc)};
   int ret = processor.prepare(y);
   if (ret < 0)

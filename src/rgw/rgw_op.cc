@@ -5628,7 +5628,7 @@ public:
     const char *if_match, const char *if_nomatch,
     const std::string *user_data,
     rgw_zone_set *zones_trace, bool *canceled,
-    optional_yield y) override
+    const req_context& rctx)
   {
     throw -EDOM;	// do this elsewhere...
   }
@@ -5670,27 +5670,30 @@ public:
   };
   int get_decrypt_filter(std::unique_ptr<RGWGetObj_Filter> *filter,
       RGWGetObj_Filter* cb,
-      bufferlist* manifest_bl) {
+      bufferlist* manifest_bl,
+      optional_yield y) {
     if (skip_decrypt) {
       return 0;
     }
-    int res = 0;
     std::unique_ptr<BlockCrypt> block_crypt;
-    res = rgw_s3_prepare_decrypt(dctx, attrs, &block_crypt, crypt_http_responses);
-    if (res == 0) {
-      if (block_crypt != nullptr) {
-        auto f = std::make_unique<RGWGetObj_BlockDecrypt>(dpp, cct, cb, std::move(block_crypt), s->yield);
-        if (manifest_bl != nullptr) {
-          res = f->read_manifest(dpp, *manifest_bl);
-          if (res == 0) {
-            *filter = std::move(f);
-          }
-        }
-      }
+    int res = rgw_s3_prepare_decrypt(dctx, y, attrs, &block_crypt, crypt_http_responses);
+    if (res < 0) {
+      return res;
     }
+    if (block_crypt == nullptr) {
+      return 0;
+    }
+    std::vector<size_t> parts_len;
+    res = RGWGetObj_BlockDecrypt::read_manifest_parts(dpp, *manifest_bl, parts_len);
+    if (res < 0) {
+      return res;
+    }
+    *filter = std::make_unique<RGWGetObj_BlockDecrypt>(dpp, cct, cb,
+	 std::move(block_crypt), std::move(parts_len),
+	 s->yield);
     return res;
   }
-  rgw::sal::ObjectProcessor & get_filter(rgw::sal::ObjectProcessor&next) override {
+  rgw::sal::ObjectProcessor & get_filter(rgw::sal::ObjectProcessor&next, optional_yield y) override {
     ofs_x = 0;
     end_x = s->obj_size;
     encrypted = false;
@@ -5713,7 +5716,7 @@ public:
 
     auto attr_iter = attrs.find(RGW_ATTR_MANIFEST);
     op_ret = this->get_decrypt_filter(&decrypt, filter,
-				      attr_iter != attrs.end() ? &(attr_iter->second) : nullptr);
+				      attr_iter != attrs.end() ? &(attr_iter->second) : nullptr, y);
     if (decrypt != nullptr) {
       filter = decrypt.get();
       filter->fixup_range(ofs_x, end_x);
