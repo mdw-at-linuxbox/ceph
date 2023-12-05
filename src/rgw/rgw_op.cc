@@ -5654,22 +5654,23 @@ class RGWCOE_make_filter_pipeline : public rgw::sal::ObjectFilter {
   bool partial_content = false;
   std::map<std::string, std::string> crypt_http_responses;	// XXX who consumes?
   std::unique_ptr<rgw::sal::ObjectProcessor> oproc;
+  const RGWEnv *env;
   RGWDecryptContext dctx;
   uint64_t obj_size;				// XXX fixme: init? "s->obj_size"
   std::unique_ptr<rgw::sal::Object> object;	// XXX fixme: init? "s->object"
   std::string err_message;			// XXX fixme: use? "s->err.message"
-  const RGWEnv *env;				// XXX fixme: init? "s->info.env"
 public:
   RGWCOE_make_filter_pipeline(CephContext *_cct, DoutPrefixProvider *_dpp,
-      map<string, bufferlist> _a, bool _skip_decrypt)
+      map<string, bufferlist> _a, bool _skip_decrypt, const RGWEnv * _env)
     : cct(_cct), attrs(_a), encrypted( attrs.count(RGW_ATTR_CRYPT_MODE)),
 //KILL      s(dummy_s),
       skip_decrypt(_skip_decrypt), dpp(_dpp),
+      env(_env),
       dctx( dpp, cct,
         err_message,
         false, 
         !cct->_conf->rgw_crypt_require_ssl
-            || rgw_transport_is_secure(cct, *env),
+            || rgw_transport_is_secure(cct, *_env),
         env ) {
   };
   int get_decrypt_filter(std::unique_ptr<RGWGetObj_Filter> *filter,
@@ -5826,7 +5827,7 @@ void RGWCopyObj::execute(optional_yield y)
     return;
   }
   try {
-    RGWCOE_make_filter_pipeline cb { s->cct, this, attrs, false };
+    RGWCOE_make_filter_pipeline cb { s->cct, this, attrs, false, s->info.env };
     op_ret = s->src_object->copy_object(s->user.get(),
 	   &s->info,
 	   source_zone,
