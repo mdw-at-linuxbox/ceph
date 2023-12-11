@@ -5644,7 +5644,6 @@ class RGWCOE_make_filter_pipeline : public rgw::sal::ObjectFilter {
   bool need_decompress;
   RGWCompressionInfo cs_info;
   bool encrypted;
-// KILL   req_state* const s;			// XXX must eliminate
   std::unique_ptr<RGWGetObj_Filter> decrypt;
   int64_t ofs_x, end_x;
   std::unique_ptr<RGWGetObj_Filter> cb;
@@ -5655,23 +5654,26 @@ class RGWCOE_make_filter_pipeline : public rgw::sal::ObjectFilter {
   std::map<std::string, std::string> crypt_http_responses;	// XXX who consumes?
   std::unique_ptr<rgw::sal::ObjectProcessor> oproc;
   const RGWEnv *env;
+  struct rgw_err &err;
+  std::unique_ptr<rgw::sal::Object> &object;
+  uint64_t &obj_size;
   RGWDecryptContext dctx;
-  uint64_t obj_size;				// XXX fixme: init? "s->obj_size"
-  std::unique_ptr<rgw::sal::Object> object;	// XXX fixme: init? "s->object"
-  std::string err_message;			// XXX fixme: use? "s->err.message"
 public:
   RGWCOE_make_filter_pipeline(CephContext *_cct, DoutPrefixProvider *_dpp,
-      map<string, bufferlist> _a, bool _skip_decrypt, const RGWEnv * _env)
+      map<string, bufferlist> _a, bool _skip_decrypt, const RGWEnv * _env,
+      std::unique_ptr<rgw::sal::Object> & _object, uint64_t &_obj_size,
+      rgw_err &_err)
     : cct(_cct), attrs(_a), encrypted( attrs.count(RGW_ATTR_CRYPT_MODE)),
-//KILL      s(dummy_s),
       skip_decrypt(_skip_decrypt), dpp(_dpp),
-      env(_env),
+      env(_env), err(_err),
+      object(_object),
+      obj_size(_obj_size),
       dctx( dpp, cct,
-        err_message,
+        err.message,
         false, 
         !cct->_conf->rgw_crypt_require_ssl
             || rgw_transport_is_secure(cct, *_env),
-        env ) {
+        env) {
   };
   int get_decrypt_filter(std::unique_ptr<RGWGetObj_Filter> *filter,
       RGWGetObj_Filter* cb,
@@ -5827,7 +5829,7 @@ void RGWCopyObj::execute(optional_yield y)
     return;
   }
   try {
-    RGWCOE_make_filter_pipeline cb { s->cct, this, attrs, false, s->info.env };
+    RGWCOE_make_filter_pipeline cb { s->cct, this, attrs, false, s->info.env, s->src_object, obj_size, s->err };
     op_ret = s->src_object->copy_object(s->user.get(),
 	   &s->info,
 	   source_zone,
